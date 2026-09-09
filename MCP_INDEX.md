@@ -58,8 +58,9 @@ externer Agent, sammeln EventLog-Anomalien.
 **Live-Spieler-Handoff (`PLAYTEST_HANDOFF.md`)**:
 Verbindlicher Vertrag für sichtbares Remote-Gameplay. Pro Ingame-Aktion genau ein separater MCP-Tool-Call; keine direkte GameState-Mutation und keine Goal-/Chain-Orchestrierung als Spielerersatz. Game-Mismatch, MCP-Mismatch und Diagnoseunsicherheit werden getrennt protokolliert.
 
-**Client (`client/`)** — **eine Sprache: Node/JS** (Python-Clients wurden entfernt; der gesamte
-Client-Kern ist `mcp_lib.js` + die Playthrough-Helfer):
+**Client (`client/`)** — zwei bewusst getrennte Rollen: **Python = externer Standard**
+(stdio-Bridge, Vision-/OCR-Worker), **Node/JS = atomare Playthrough-Helfer**
+(`mcp_lib.js` + Atomic-Tools; der Legacy-Node-OCR-Worker wurde archiviert):
 - `agent_repair_loop.js` — Autonomer Repair- & Feature-Orchestrator für geschlossene Self-Healing-Läufe (8-Schritte-Loop, JS-Port)
 - `mcp_lib.js` — Referenz-TCP-Client für Metadaten, Artefakte und Worker-Aufträge (interaktiv/auto/one-shot)
 - `vision_worker.py` — lokale Bildanalyse-Instanz (Pillow, ohne Base64-Roundtrip; liest die Context-Artefakte aus `user://mcp_context`); OCR optional via `--ocr-command` (Tesseract-CLI)
@@ -201,13 +202,13 @@ mcp/e2e_world_scene="game_view"                    ; leer ⇒ Welt-Verifikation 
   (`runtime_autonomy_write/patch/export`) — vorher blieben die Autonomy-Tools im
   Editor-Modus trotz aktiviertem Gate gesperrt.
 
-## Tool-Liste (Stand: 143 Domain-Tools + 6 Host-Tools + custom_*; Editor-Session zusätzlich +17 editor_*-Tools)
+## Tool-Liste (Stand: 142 Domain-Tools + 7 Host-Tools + custom_*; Editor-Session zusätzlich +19 editor_*-Tools)
 
 > **Zählung autoritativ:** `McpToolRegistry`-Reflection — die Registry lädt
 > alle Domänen und liefert die echten Namen. Domain-Tools (aktuelle Bilanz mit
-> Zähl-Methode: **BESTANDSAUFNAHME.md §4**) + 6 Host-Tools (runtime_mcp_status,
-> runtime_mcp_events, runtime_agent_goal_set, runtime_agent_activity,
-> runtime_visual_evidence, runtime_run_trace).
+> Zähl-Methode: **BESTANDSAUFNAHME.md §4**) + 7 Host-Tools (runtime_mcp_capabilities,
+> runtime_mcp_status, runtime_mcp_events, runtime_agent_goal_set,
+> runtime_agent_activity, runtime_visual_evidence, runtime_run_trace).
 
 ### Runtime/Input (22) — `runtime/tools/runtime/mcp_runtime_tools.gd`
 | Tool | Beschreibung |
@@ -257,12 +258,13 @@ Python/Node-Worker lesen die Artefakte direkt von Disk.
 Template-Tools akzeptieren weiterhin bewusst ein vom Agenten bereitgestelltes
 Template als Eingabe; das ist getrennt vom Screenshottransport.
 
-**OCR-Beschleunigung:** Worker-Pool (default 2, env `MCP_OCR_POOL`) verarbeitet
-OCR-Jobs parallel (round-robin, Serve-Loop awaited nicht seriell); `cacheMethod "write"` +
-lokaler `cachePath` (`node_modules/.cache/tesseract.js`, inkl. einmalig abgelegter
-`deu.traineddata.gz`) machen den Kaltstart komplett lokal (~2 s statt CDN-Download).
-Kein `workerPath` setzen (Browser-Variante crasht in Node — tesseract.js wählt sonst
-automatisch die Node-kompatible Worker-Variante).
+**OCR-Realität (geprüft, Bestandsaufnahme F-05):** OCR läuft im Python-Vision-Worker
+über **pytesseract + Tesseract-CLI** (`client/vision_worker.py`). Voraussetzungen:
+`pip install pillow pytesseract` + installiertes Tesseract (Windows-Pfad wird
+auto-erkannt; sonst `--ocr-command` setzen). Ohne Tesseract antwortet OCR mit
+`available:false` + `reason` — der Agent rät nicht, sondern liest den Grund.
+OCR-Anfragen werden über einen festen Worker-Port (`vision_worker_port`, Default
+Runtime-Port + 37) serialisiert; ein paralleler Node-OCR-Pool existiert nicht.
 
 **PFLICHT: Bild-/OCR-Analyse bei unerwartetem Ergebnis — ENTKOPPELT** — Der
 Runtime-Server (`mcp_server.gd`) erkennt unerwartete Tool-Antworten (Fehler

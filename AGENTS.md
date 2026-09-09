@@ -58,8 +58,11 @@ Der Server hängt bei unerwarteten Lagen **automatisch** `visual_evidence` an:
   (meist schon `ready`). Nie blind weitermachen.
 
 ### 3. OCR-Pipeline
-- Tesseract.js im Client-Ordner (`npm install tesseract.js`), Assets lokal
-  (Kaltstart ~2,3 s), Worker-Pool default 2 (`MCP_OCR_POOL`).
+- OCR läuft im Python-Vision-Worker: `pip install pillow pytesseract` +
+  installiertes Tesseract-CLI (Windows-Pfad wird auto-erkannt, sonst
+  `--ocr-command`). Ohne Tesseract: `available:false` + `reason` — Grund
+  lesen, nicht raten. (Kein Node-OCR-Pool; das alte `MCP_OCR_POOL` ist
+  Legacy, siehe `client/vision_worker_legacy.js`.)
 - `ocr.available: true` + `text` + `confidence` — bei `available:false` den
   `reason` lesen (nicht raten).
 

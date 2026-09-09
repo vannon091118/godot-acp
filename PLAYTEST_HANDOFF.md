@@ -45,7 +45,7 @@ Ein sichtbarer Playtest wird wie ein Spieler ausgefuehrt. Der Agent entscheidet 
 8. Separat scannen; Screenshot nur bei Unklarheit, Widerspruch, Scroll-Nachweis oder fehlender sichtbaren Evidenz.
 9. Erst danach den naechsten Spielerzug bestimmen.
 
-Ein Ingame-Script darf genau einen MCP-Tool-Call ausfuehren. Es darf keine Zielsuche, Mausbewegung, Klick, Wartezeit, Folgeaktion oder GameState-Mutation verstecken. `runtime_game_state_summary` ist in diesem Vertrag nur eine read-only Beobachtung und kein Steuerungsweg. `atomic_session.js` darf den Transport persistent halten, aber jede JSON-Zeile bleibt genau ein MCP-Call.
+Ein Ingame-Script darf genau einen MCP-Tool-Call ausfuehren. Es darf keine Zielsuche, Mausbewegung, Klick, Wartezeit, Folgeaktion oder GameState-Mutation verstecken. State-Bruecken (`game_state_summary`, `game_entity_query/info`) sind in diesem Vertrag nur read-only Beobachtung (im player-Profil serverseitig gesperrt) und kein Steuerungsweg. `atomic_session.js` darf den Transport persistent halten, aber jede JSON-Zeile bleibt genau ein MCP-Call.
 
 Nicht erlaubt fuer sichtbare Spielerlaeufe:
 

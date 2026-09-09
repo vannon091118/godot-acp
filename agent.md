@@ -108,7 +108,9 @@ Ein Clone ohne aktivierte Hooks ist ein Verstoß gegen diese Datei.
 ## 3. Arbeitsweise (Step-by-Step)
 
 1. **Pflicht-Lese (Rang 0):** diese Datei → `ENTKOPPLUNG.md` → `MCP_INDEX.md`
-   → `PERSISTENCE.md` → `AGENTS.md`.
+   → `PERSISTENCE.md` → `AGENTS.md`. **Für externe Agents gilt statt Code-Lektüre:
+   `runtime_mcp_capabilities` aufrufen** — Settings, Capabilities und die
+   vorgeschriebenen Loops (atomare Kette) kommen aus dem Tool, nicht aus Dateien.
 2. **Aufgabe klären:** Ziel, Scope, Verifikationspfad.
 3. **Plan schreiben** (Todo-Liste); ein logischer Schritt pro Datei-Gruppe.
 4. **Umsetzen:** Edit → Verifikation (§2.2) → Commit-Kandidat.

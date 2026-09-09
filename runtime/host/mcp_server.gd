@@ -232,11 +232,84 @@ func get_role() -> String:
 
 
 func get_session_id() -> String:
-	return _session_id
-
-
-func get_context_store() -> RefCounted:
+	return _session_idfunc get_context_store() -> RefCounted:
 	return _context_store
+
+
+## Bootstrap-Discovery für externe Agenten: ALLES, was ein Agent ohne
+## Code-Lektüre wissen muss, um autonom zu arbeiten — Projektkonfig
+## (welche application/mcp/*-Settings sind gesetzt, was degradiert deshalb),
+## Rollen-Capabilities, die vorgeschriebenen Loops (atomarer Spieler-Vertrag,
+## Autonomy-Loop) und Transport. Antwort ist self-contained.
+func _handle_mcp_capabilities(args: Dictionary) -> Dictionary:
+	var section := str(args.get("section", "all"))
+	var result: Dictionary = {"ok": true, "role": _role, "protocol": "mcp/json-rpc-2.0"}
+
+	if section in ["all", "settings"]:
+		var settings: Dictionary = {}
+		var degradations: Array = []
+		var config_defs := [
+			{"key": "game_state_node", "purpose": "GameState node path; empty = convention autodetect", "degrades": "game_state_snapshot/restore/summary return not-configured if no GameState node exists"},
+			{"key": "event_log_node", "purpose": "EventLog node path; empty = convention autodetect", "degrades": "runtime_ux_logs/project logs carry engine events only"},
+			{"key": "game_state_script", "purpose": "script path for static state API analysis", "degrades": "runtime_analyze_game_state falls back to autoload/name scan"},
+			{"key": "preflight_script", "purpose": "headless preflight suite for preflight_constraint chain steps", "degrades": "preflight_constraint chain steps answer BLOCKED"},
+			{"key": "main_menu_scene", "purpose": "start scene for the visible playthrough driver", "degrades": "mcp_playthrough_driver aborts with setup hint"},
+			{"key": "e2e_start_label", "purpose": "label of the start button in the start scene", "degrades": "e2e scenarios main_menu/new_game_to_world/pause_save_menu/freeze_step report SKIP"},
+			{"key": "e2e_world_scene", "purpose": "scene name expected after game start", "degrades": "world verification steps are skipped"},
+			{"key": "e2e_save_label", "purpose": "label of the save button in the pause flow", "degrades": "pause save sub-check skipped"},
+			{"key": "e2e_menu_label", "purpose": "label of the back-to-menu button in the pause flow", "degrades": "pause menu sub-check skipped"},
+			{"key": "planets_node", "purpose": "container node with get_id()/get_faction() entities", "degrades": "game_entity_query/info return not-configured"},
+			{"key": "planets_group", "purpose": "node group with get_id()/get_faction() entities", "degrades": "game_entity_query/info return not-configured"},
+			{"key": "worker_manager_node", "purpose": "dispatch/worker management node", "degrades": "(reserved bridge)"},
+			{"key": "default_faction", "purpose": "default faction/player key", "degrades": "calls must name the key explicitly"},
+			{"key": "resource_ids", "purpose": "comma-separated resource ids", "degrades": "resource recognition only via method convention"},
+			{"key": "audio_analyzer_script", "purpose": "project-owned python audio analyzer", "degrades": "audio_analyze/slice_auto/render_evidence/compare return not-configured"},
+			{"key": "chain_dir", "purpose": "chain manifest catalog (addon default: res://addons/mcp/mcp_chains)", "degrades": ""},
+		]
+		for def in config_defs:
+			var key := str(def["key"])
+			var value := str(ProjectSettings.get_setting("application/mcp/" + key, ""))
+			var configured := value.strip_edges() != ""
+			settings[key] = {"configured": configured, "value": value if configured else "", "purpose": str(def["purpose"])}
+			if not configured and str(def["degrades"]) != "":
+				degradations.append({"setting": "application/mcp/" + key, "degrades": str(def["degrades"])})
+		result["settings"] = settings
+		result["degradations"] = degradations
+		result["custom_tools_dir"] = "res://mcp_tools/ (any .gd with get_tool_defs()+dispatch_tool() registers as custom_* tools)"
+
+	if section in ["all", "capabilities"]:
+		var runtime_caps: Array = ["scene tree reads", "atomic input (click/key/mouse_move/scroll/drag with smooth cursor)", "freeze/step", "ux scan/find/click/watch", "screenshots as local artifacts + OCR worker", "perf/debug/memory", "game_state_* and game_entity_* bridges", "custom_* tools", "goal player + chains (qa/dev only)", "autonomy workspace (write-gated)"]
+		var editor_caps: Array = ["editor scene tree + node inspection", "undo/redo transactions (write-gated)", "editor screenshots", "project run/stop with MCP handshake", "editor logs"]
+		result["capabilities"] = {
+			"runtime": runtime_caps,
+			"editor": editor_caps,
+			"profiles": {"player": "visible player run, one atom per call, orchestration blocked", "qa": "debug/qa: goal player, chains, freeze/step, e2e", "dev": "qa + runtime_eval + autonomy writes (flags apply)"},
+		}
+
+	if section in ["all", "loops"]:
+		result["loops"] = {
+			"player_atomic_loop": {
+				"rule": "ONE tool call per step; observe the live UI after EVERY call before deciding the next step; never batch, never pre-plan",
+				"steps": ["runtime_ux_scan (bounded scope)", "runtime_mouse_move (own atom)", "optional scan", "runtime_click (own atom)", "runtime_wait_ms (own atom)", "runtime_ux_scan (verify)"],
+				"blocked_in_player_profile": ["runtime_goal_play", "runtime_goal_sequence", "runtime_chain_run", "runtime_eval", "runtime_ux_click", "runtime_freeze", "runtime_step_frames", "game_state_restore", "runtime_e2e_run", "runtime_autonomy_*"],
+				"escalation": "switch profile via editor dock or --mcp-profile=qa|dev",
+			},
+			"autonomy_repair_loop": {
+				"rule": "journaled edits only; every run leaves one evidence trace; export is gated",
+				"steps": ["runtime_agent_goal_set", "runtime_autonomy_workspace_begin", "runtime_autonomy_workspace_import", "runtime_autonomy_patch", "runtime_autonomy_export (apply=true)", "runtime_chain_run (preconditions)", "visible atoms (player loop)", "runtime_run_trace end + verdict", "runtime_autonomy_rollback_all on FAIL"],
+			},
+			"evidence_rule": "unexpected tool results get visual_evidence automatically; fetch with runtime_visual_evidence — never guess, never blind-continue",
+		}
+
+	if section in ["all", "transport"]:
+		result["transport"] = {
+			"runtime_port": _port,
+			"stdio_bridge": "client/mcp_stdio_bridge.py (external clients, absolute wrapper path required)",
+			"node_atoms": "client/playthroughs/atomic/mcp_player_atom.js + atomic_session.js (MCP_PORT env, one call per process or persistent stdin session)",
+			"resources": ["godot://scene/current", "godot://logs/recent", "godot://gameState/summary", "godot://test/results", "godot://agent/activity"],
+		}
+	return result
+
 
 
 func get_lifecycle_state() -> Dictionary:
@@ -325,6 +398,8 @@ func _load_registry() -> bool:
 ## Host-Tool-Dispatcher für Chain-Steps (siehe set_chain_host_dispatch).
 ## Synchron bewusst: Ketten-Steps sind kurze Beobachtungen, kein UI-Fluss.
 func _dispatch_host_tool_for_chain(tool_name: String, args: Dictionary) -> Variant:
+	if tool_name == "runtime_mcp_capabilities":
+		return _handle_mcp_capabilities(args)
 	if tool_name == "runtime_mcp_status":
 		return get_lifecycle_state()
 	if tool_name == "runtime_mcp_events":
@@ -348,6 +423,11 @@ func _dispatch_host_tool_for_chain(tool_name: String, args: Dictionary) -> Varia
 func _register_host_tools() -> void:
 	var contracts = load("res://addons/mcp/runtime/autonomy/mcp_autonomy_contracts.gd")
 	var host_tools := [
+		{
+			"name": "runtime_mcp_capabilities",
+			"description": "Bootstrap-Discovery: project config (which application/mcp/* settings are set and which MCP features degrade because of it), configured autoloads, capabilities of the runtime and editor roles, the atomic player loop (scan/move/click/wait/scan — one tool call per step, observe before every next step) and the autonomy loop (workspace/patch/export/chain). Call this FIRST when a host project is unknown; no code reading needed.",
+			"inputSchema": {"type": "object", "properties": {"section": {"type": "string", "enum": ["all", "settings", "capabilities", "loops", "transport"], "default": "all"}}},
+		},
 		{
 			"name": "runtime_mcp_status",
 			"description": "Read MCP role, lifecycle, queue, performance and artifact status",
@@ -558,7 +638,7 @@ func _handle_request(client_id: int, id: Variant, method: String, params: Dictio
 					"tools": {"listChanged": true},
 					"resources": {"listChanged": true}
 				},
-				"serverInfo": {"name": "gdscript-mcp-bridge", "version": "4.0.0", "role": _role},
+				"serverInfo": {"name": "godot-acp", "version": "1.0.0", "role": _role},
 			}, "", 0)
 		"initialized":
 			_send_response(client_id, id, {"ready": true, "lifecycle": get_lifecycle_state()}, "", 0)
@@ -680,6 +760,9 @@ func _handle_tool_call(client_id: int, id: Variant, params: Dictionary) -> void:
 	var tool_name := str(params.get("name", ""))
 	var raw_args: Variant = params.get("arguments", {})
 	var args: Dictionary = raw_args if raw_args is Dictionary else {}
+	if tool_name == "runtime_mcp_capabilities":
+		_send_tool_result_atomic(client_id, id, _handle_mcp_capabilities(args))
+		return
 	if tool_name == "runtime_mcp_status":
 		_send_tool_result_atomic(client_id, id, get_lifecycle_state())
 		return

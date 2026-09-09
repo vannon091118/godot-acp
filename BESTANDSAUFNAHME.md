@@ -28,7 +28,7 @@ nachgeführt (Pflicht gemäß `agent.md` §3).
 | Zentrale Config | `runtime/core/mcp_addon_config.gd` | — (Getter) | ✅ Entkopplung: EIN Ort für `application/mcp/*` |
 | Custom-Loader | `runtime/core/mcp_custom_tool_loader.gd` | `custom_*` (hot-reload) | ✅ Host-Projekt-Erweiterungspunkt (`res://mcp_tools/`) |
 | Projekt-Adapter | `runtime/core/mcp_project_adapter.gd` | — | ✅ optional, Konventions-Erkennung |
-| Server-Host | `runtime/host/mcp_server.gd` | 6 Host-Tools | ✅ 1.3k LOC; Resources, Evidenz, Profile |
+| Server-Host | `runtime/host/mcp_server.gd` | 7 Host-Tools | ✅ inkl. `runtime_mcp_capabilities` (Bootstrap-Discovery, F-03) |
 | Runtime-Autoload | `runtime/host/mcp_runtime.gd` | — | ✅ Boot über `--mcp` / `MCP_EMBEDDED` |
 | Protokoll/Lifecycle | `runtime/protocol/`, `runtime/lifecycle/` | — | ✅ JSON-RPC-Encoding, Latenz-Tracking |
 | Runtime/Input | `runtime/tools/runtime/` | 22 | ✅ Klicks (smooth travel), Freeze/Step, virtuelle Maus |
@@ -77,7 +77,7 @@ nachgeführt (Pflicht gemäß `agent.md` §3).
 | Chain-Controller | 5 |
 | Custom-Loader | dynamisch (`res://mcp_tools/`) |
 | **Domain-Summe** | **142** |
-| Host-Tools (Server) | 6 (`runtime_mcp_status`, `runtime_mcp_events`, `runtime_agent_goal_set`, `runtime_agent_activity`, `runtime_visual_evidence`, `runtime_run_trace`) |
+| Host-Tools (Server) | 7 (`runtime_mcp_capabilities`, `runtime_mcp_status`, `runtime_mcp_events`, `runtime_agent_goal_set`, `runtime_agent_activity`, `runtime_visual_evidence`, `runtime_run_trace`) |
 | Editor-Session zusätzlich | 19 `editor_*` |
 
 ## 5. Gefundene & geschlossene Lücken (F-Register)
@@ -88,9 +88,19 @@ nachgeführt (Pflicht gemäß `agent.md` §3).
 | F-02 | Gameplay-Tools mit Spielfachlichkeit (Faktion/Planet/Schiff-Vokabular) | ✅ entkoppelt → generische `game_*`-Brücken (vorige Iteration) |
 | F-03 | Preflight-/Start-Szenen-Pfade als Addon-Defaults | ✅ ersetzt durch Config mit Degradierung |
 | F-04 | Kopplungsreste (Szenen-Labels, Audio-Worker-Pfad) im Addon-Kern | ✅ config-getrieben, Commit-Gate wacht ab jetzt |
+| F-05 | OCR-Doku beschrieb entferntes Tesseract.js-Setup (`MCP_OCR_POOL`); Realität: pytesseract-Worker, serialisiert | ✅ Doku korrigiert (MCP_INDEX, AGENTS, PERSISTENCE, README) |
+| F-06 | PLAYTEST_HANDOFF nannte Phantom-Tool `runtime_game_state_summary` (existiert nicht) | ✅ durch reale `game_state_summary` + Sperr-Status ersetzt |
+| F-07 | Kein Bootstrap-Discovery: externe Agents mussten Addon-Code lesen, um Setup/Loops zu kennen | ✅ `runtime_mcp_capabilities` (Settings/Capabilities/Loops/Transport, in jedem Profil erlaubt) |
+| F-08 | `serverInfo` hieß `gdscript-mcp-bridge` (Alter Name) | ✅ `godot-acp` 1.0.0 |
+| F-09 | Atomare Verkettung war dokumentiert, aber nicht als generische Vorschrift maschinenlesbar | ✅ `loops.player_atomic_loop` im Discovery-Tool + AGENT_WORKFLOW §Bootstrap |
 
 Offene Lücken: **G-01 Impact-Graph** (siehe Audit) und **G-02 Multi-Client-Scopes**
 — beide in `ROADMAP.md` (v1.2) terminiert, nicht in v1.0 enthalten.
+
+**Claim-Audit (September 2026):** Alle 8 README-Use-Cases wurden gegen den
+Code geprüft (Tool-Existenz, Routing, Degradierung). Ergebnisse: UC1/2/3/4/6/7/8
+erfüllbar, UC5 mit korrigiertem OCR-Claim (F-05); Setup-Lücken als F-06 bis
+F-09 geschlossen.
 
 ## 6. Persistenz-Bilanz (Kurzform, verbindlich: PERSISTENCE.md)
 
@@ -113,6 +123,6 @@ Cache: `node_modules/.cache/tesseract.js/` (regenerierbar).
 
 Domain-Tools = Summe der `get_tool_defs()`-Einträge je Modul
 (gemessen per `grep -cE '^\s*(_make|_make_tool)\("'` bzw. `"name": "runtime_…"`-Zählung
-in den Controller-Dateien), plus 6 Server-Host-Tools. Die Registry-Reflection zur
+in den Controller-Dateien), plus 7 Server-Host-Tools. Die Registry-Reflection zur
 Laufzeit bleibt die autoriative Quelle; diese Datei ist die dokumentierte
 Momentaufnahme (Stand: Commit `d4a71e5`).

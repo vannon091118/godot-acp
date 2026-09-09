@@ -22,6 +22,7 @@ const CHAIN_DIR := "res://addons/mcp/mcp_chains"
 # Validierung muss sie kennen, sonst failt jede Kette, die den Server-Zustand
 # prüft (z.B. world_smoke mit runtime_mcp_status), beim Validate.
 const HOST_TOOLS := [
+	"runtime_mcp_capabilities",
 	"runtime_mcp_status",
 	"runtime_mcp_events",
 	"runtime_agent_activity",

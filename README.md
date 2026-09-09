@@ -68,7 +68,7 @@ Patch, und am Ende alle Belege selbst abheftet.
 
 ### 📸 5. Vision & OCR-Pipeline
 Screenshots landen als lokale Artefakte (TTL 45 s, niemals Base64 durchs MCP),
-ein Python-Worker liest sie von Disk, Tesseract-OCR läuft gepoolt im Hintergrund.
+ein Python-Worker liest sie von Disk, OCR läuft über pytesseract + Tesseract-CLI.
 Bei unerwarteten Tool-Antworten hängt der Server automatisch `visual_evidence`
 an — Fire-and-forget, die Aktion blockiert nie. Der Agent darf nicht raten.
 Sieht es trotzdem jemand machen, gibt's zumindest ein Foto davon.
@@ -211,6 +211,10 @@ McpToolRegistry (Lazy-Load, Prefix-Routing, Sync/Async-Dispatch)
 ```
 
 Vollständige Tool-Liste und Architektur: [MCP_INDEX.md](MCP_INDEX.md).
+
+> **Bootstrap für Agenten:** Nach dem Verbinden **zuerst** `runtime_mcp_capabilities`
+> aufrufen — das Tool liefert Projektkonfig, Capabilities, die vorgeschriebenen
+> Loops (atomare Kette!) und Transport. Kein Datei-Lesen nötig.
 
 ---
 

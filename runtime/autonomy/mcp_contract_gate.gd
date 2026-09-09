@@ -31,8 +31,12 @@ const PROFILES := [PROFILE_PLAYER, PROFILE_QA, PROFILE_DEV]
 ## - runtime_ux_click verbirgt Find + Klick in einem Tool
 ## - Freeze/Step sind Debug-Modi, kein Spieler-Erlebnis
 ## - game_state_restore mutiert den GameState des Projekts direkt
+## - game_entity_*/game_state_summary sind nur read-only Beobachtung; im
+##   player-Profil gesperrt, damit State-Lesen nicht zum Steuerungsweg wird
 ## - runtime_e2e_run führt vorgeplante Szenarien aus
 ## - Autonomy-Write-Tools sind Edit-Werkzeuge
+## - runtime_mcp_capabilities ist bewusst NICHT gesperrt: Discovery/Bootstrap
+##   ist in jedem Profil erlaubt (ein Agent muss seine Umgebung lesen dürfen)
 const PLAYER_BLOCKED_TOOLS := [
 	"runtime_goal_play",
 	"runtime_goal_sequence",

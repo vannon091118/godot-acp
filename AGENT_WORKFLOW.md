@@ -1,13 +1,40 @@
-# MCP Agent Workflow — Autonome Playtesting-Umgebung
+# MCP Agent Workflow — Autonome Playtesting-Umgebung (GODOT ACP)
 
-**Stand:** 2026-08-26
-**Ziel:** Unkomplizierte, umfassende Autonomie für Agents, die mit jeder Benutzung schneller und präziser wird — unabhängig vom konkreten Godot-Projekt.
+**Stand:** 2026-09-09
+**Ziel:** Unkomplizierte, umfassende Autonomie für Agents, die mit jeder Benutzung schneller und präziser wird — unabhängig vom konkreten Godot-Projekt. **Ohne Code-Lektüre:** Alles Nötige liefert `runtime_mcp_capabilities` (Bootstrap-Discovery: Settings, Capabilities, vorgeschriebene Loops, Transport).
 
-> **LIVE-SPIELERREGEL:** Sichtbares Gameplay wird ausschließlich als einzelne MCP-Atome ausgeführt. Ein Atom-Script macht genau einen MCP-Tool-Call. Der Agent liest nach jedem Call die Live-Oberfläche und entscheidet den nächsten Zug erst danach. Keine direkte GameState-Mutation, kein `runtime_goal_sequence`, kein `runtime_goal_play`, kein `runtime_chain_run` und kein vorgeplanter Gesamt-Runner für sichtbare Spielerläufe. Der vollständige Vertrag, die Atom-Registry und die Handoff-Findings stehen in `PLAYTEST_HANDOFF.md`.
+> **LIVE-SPIELERREGEL (ATOMARE VERKETTUNG, generisch und serverseitig erzwungen):**
+> Sichtbares Gameplay wird ausschließlich als einzelne MCP-Atome ausgeführt.
+> **Ein Atom = genau ein MCP-Tool-Call.** Der Agent liest nach jedem Call die
+> Live-Oberfläche und entscheidet den nächsten Zug **erst danach**. Gilt für
+> JEDES Spiel — die Kette ist nicht projektspezifisch, sondern strukturell:
+>
+> ```
+> Scan → Move → [Scan] → Click/Key/Scroll → Wait → Scan   (dann neu entscheiden)
+> ```
+>
+> Verboten im player-Profil (serverseitig erzwungen, Verstöße werden gezählt):
+> direkte GameState-Mutation, `runtime_goal_sequence`, `runtime_goal_play`,
+> `runtime_chain_run`, `runtime_ux_click` (Find+Klick in einem Tool),
+> Freeze/Step, `runtime_e2e_run`, Autonomy-Writes — und jeder Runner, der
+> mehrere Atome bündelt oder vorausplant. Der vollständige Vertrag steht in
+> `PLAYTEST_HANDOFF.md`.
+
+## Bootstrap für externe Agents (kein Code-Research nötig)
+
+1. Verbinden (stdio-Bridge oder TCP 9090), `initialize` → `initialized`.
+2. **`runtime_mcp_capabilities`** aufrufen. Die Antwort enthält:
+   - `settings`: welche `application/mcp/*`-Werte das Projekt gesetzt hat
+   - `degradations`: welche Features deshalb SKIP/BLOCKED/not-configured melden
+   - `capabilities`: Runtime-/Editor-Fähigkeiten, Profile (player/qa/dev)
+   - `loops`: die VORSCHRIFT für Spieler- und Repair-Loop (atomare Kette)
+   - `transport`: Ports, Bridges, Ressourcen-URIs
+3. Danach arbeiten — ohne eine einzige Addon-Datei gelesen zu haben. Diese
+   Doku ist für Menschen und Reviewer; die Maschinen-Wahrheit liefert das Tool.
 
 ## Modi strikt trennen
 
-- **Live-Spieler:** `runtime_ux_scan`/`runtime_ux_find` → `runtime_mouse_move` → optionaler Scan → `runtime_click`/`runtime_scroll` → separater Wait/Scan. Jeder Schritt ist ein eigener MCP-Call; für viele Schritte darf der Transport persistent bleiben.
+- **Live-Spieler:** atomare Kette (oben). Jeder Schritt ist ein eigener MCP-Call; für viele Schritte darf der Transport persistent bleiben (`atomic_session.js`), aber eine Zeile bleibt genau ein Call.
 - **Autonomie-Repair:** Workspace, Write-Gate, Export und Rollback; kein Gameplay-Nachweis.
 - **Vertragstest:** Headless oder sichtbare Test-Suite; kein Spieler-PASS. Chains zuerst validieren, dann in begrenzten Segmenten ausführen.
 - **Editor-Tooling:** Editor-Port/Dock, Undo/Redo und Editor-Schreibrechte; kein Runtime-Gameplay-PASS.
@@ -29,9 +56,9 @@ steht in `ENTKOPPLUNG.md`.
 2. **Project Settings → Plugins**: `GODOT ACP` aktivieren.
 3. Beim nächsten Editor-Boot registriert das Plugin idempotent (nur fehlende):
    - Autoloads `McpRuntime` + `McpProjectAdapter` (inert ohne `--mcp`-Flag),
-   - `application/mcp/*`-Settings (`preflight_script`, `main_menu_scene`,
-     `game_state_node`, `event_log_node`, `project_adapter_node`,
-     `game_state_script`).
+   - leere `application/mcp/*`-Settings (vollständige Liste mit
+     Degradierungs-Verhalten: `runtime_mcp_capabilities` → `settings`, oder
+     `ENTKOPPLUNG.md` §3).
 
 ### `application/mcp/*`-Settings (Defaults vs. projektseitig)
 
@@ -214,9 +241,10 @@ Agent 3 (Session 2026-08-26):
 
 ## 🔁 Der vollautonome 8-Schritte Repair- & Feature-Loop (`agent_repair_loop.js`)
 
-> **Eine Sprache:** Der gesamte Client-Stack ist Node/JS (`mcp_lib.js` + Playthrough-Helfer).
-> Die früheren Python-Clients (`agent_repair_loop.py`, `mcp_client.py`, `remote_playout.py`,
-> `vision_worker.py`, …) wurden entfernt — kein zweiter Protokoll-Client mehr.
+> **Client-Rollen:** Externer Standard-Transport ist die Python-Bridge
+> (`mcp_stdio_bridge.py`); der Repair-Loop und die atomaren Playthrough-Helfer
+> sind Node/JS (`mcp_lib.js` + Atomic-Tools). Bild-/OCR-Analyse läuft im
+> Python-Vision-Worker.
 
 Für geschlossene, vollautomatische Reparatur- und Feature-Entwicklungsläufe:
 

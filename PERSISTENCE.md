@@ -34,7 +34,7 @@
 | `.mcp.json` | MCP-Client-Registrierung (stdio-Bridge → 9090) | wird mitcommittet; jeder Client kann das Spiel über `.mcp.json` registrieren |
 | `res://addons/mcp/mcp_chains/*.json` | Versionierte Chain-Manifeste (F5) | PASS ist nur echt, wenn die Kette so lief; Manifeste sind wiederholbar und diffbar |
 | `res://addons/mcp/` | Addon-Code + Doku | komplett versioniert (inkl. `.gd.uid`-Sidecars) |
-| `res://addons/mcp/client/node_modules/` | tesseract.js + OCR-Assets-Cache | ❌ gitignored — regenerierbar via `npm install`; `deu.traineddata` liegt im lokalen Cache |
+| `res://addons/mcp/client/node_modules/` | Node-Client-Abhängigkeiten (Legacy; OCR läuft über den Python-Worker) | ❌ gitignored — regenerierbar via `npm install` |
 
 ### B. Nutzerdaten (user://, persistent — nie committen)
 
@@ -53,7 +53,7 @@
 
 | Pfad | Inhalt | Regenerierung |
 |---|---|---|
-| `addons/mcp/client/node_modules/.cache/tesseract.js/` | `deu.traineddata.gz` + Worker-Assets | `npm install` + einmaliger Download (Offline-Kaltstart 2,3 s) |
+| `addons/mcp/client/node_modules/.cache/tesseract.js/` | Legacy-OCR-Asset-Cache (aktiver OCR-Pfad: Python/pytesseract, keine Node-Cache nötig) | entfallbar |
 
 ---
 
