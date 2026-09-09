@@ -220,6 +220,10 @@ Godot 4.7.2 geprüft (echter UX-Scan mit Controls, echter Pause-ACK,
 Blockliste, automatische Anomalie-Analyse mit echten Godot-Tools,
 Reconnect, Persistenz-Replay). Einzelheiten: [backend/README.md](backend/README.md).
 
+> **Arbeitsmodell (harte Regel):** Tasks laufen als **atomare
+> Ausführungsreihen** im sichtbaren Spielfenster — `backend.run_sequence`
+> abgeben, das Backend baut die Reihenfolge und ergänzt smooth Maus-Ansätze
+> **automatisch**; Ausführung asynchron, Fortschritt per `sequence.progress`.
 > **Bootstrap für Agenten (ohne Code-Lektüre):** `backend.onboard` liefert
 > Vertrag, Worker-Loop (`get_work → atomarer Call → observe → claim_work`),
 > Human-Control-Regel und nächste Schritte in einem Objekt. Zusätzlich gilt:

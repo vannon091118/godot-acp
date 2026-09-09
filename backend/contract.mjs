@@ -93,11 +93,15 @@ export const SSE_CHANNELS = [
   "work.created",
   "work.claimed",
   "observation.recorded",
+  "sequence.progress",
 ];
 
 /* Orchestrator: Anomalie-Zustände (nur hier definiert — eine Interpretation). */
 export const ANOMALY_STATES = ["OPEN", "ANALYZING", "ANALYZED"];
 export const WORK_STATES = ["OPEN", "CLAIMED", "DONE"];
+
+/* Ausführungsreihen: atomare Task-Sequenzen (sichtbares Fenster Pflicht). */
+export const SEQUENCE_STATES = ["QUEUED", "RUNNING", "COMPLETED", "FAILED", "BLOCKED", "CANCELLED"];
 
 /* ─────────────────── Menschen-Wörter (die EINE Übersetzung) ─────────── */
 

@@ -63,6 +63,20 @@ Command-Maschine, keine Parallelarchitektur:
    gebunden (73 echte Tools beim realen Godot-Ziel) und dem Agent
    transparent über `tools/list` + `backend.onboard` geliefert.
 
+### Ausführungsreihen: Task rein, Atome kommen raus
+
+Die harte Regel: MCP-Nutzung bedeutet **sichtbares Spielfenster**, und Tasks
+werden nicht als Einzel-Klicks ausgeführt, sondern als **atomare
+Ausführungsreihen**. Der Agent gibt Absichten ab (`backend.run_sequence` oder
+`POST /api/sequences`); das Backend baut daraus die echte Reihenfolge und
+**ergänzt automatisch den smooth Maus-Ansatz** (`runtime_mouse_move`,
+interpoliert über mehrere Frames) vor jedem Koordinaten-Klick — der Agent muss
+niemals selbst einen Ansatz setzen. Ausführung ist **asynchron**: sofort eine
+`sequenceId`, Fortschritt via `sequence.progress` (SSE) bzw.
+`backend.get_sequence`. Jedes Atom ist ein normaler Command auf dem Bus —
+Pause, Blockliste und Freigaben greifen unverändert. Ohne ONLINE-Ziel wird die
+Sequenz mit konkreter Ursache abgelehnt (kein Schein-Fortschritt).
+
 ### Onboarding ohne Code-Lektüre
 
 `backend.onboard` (via Proxy) bzw. `GET /api/onboard` liefert in einem

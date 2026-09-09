@@ -319,6 +319,31 @@ async function main() {
     const cl = parse(replies[42]);
     check("   backend.claim_work: Übernahme am Backend sichtbar", cl.workOrder?.state === "CLAIMED" && cl.workOrder?.claimedBy === "contract-agent", JSON.stringify(cl).slice(0, 120));
 
+    // ── 16) Ausführungsreihe: Task rein, Backend baut Atome + Auto-Smooth ──
+    agent.send({ jsonrpc: "2.0", id: 50, method: "tools/call", params: {
+      name: "backend.run_sequence",
+      arguments: { name: "Klick-Beweis", steps: [
+        { tool: "runtime_click", arguments: { x: 120, y: 80 } },
+        { tool: "runtime_ux_scan", arguments: {} },
+      ] },
+    } });
+    await waitFor(() => replies[50] !== undefined, 6000, "run_sequence");
+    const rs = parse(replies[50]);
+    check("16. backend.run_sequence: asynchrone Annahme mit sequenceId", !!rs.sequenceId && rs.total === 3, JSON.stringify(rs).slice(0, 140));
+    // 3 Atome erwartet: smooth Ansatz (auto) + Klick + Scan.
+    let seqDone = null;
+    await waitFor(async () => {
+      agent.send({ jsonrpc: "2.0", id: 51, method: "tools/call", params: { name: "backend.get_sequence", arguments: { sequenceId: rs.sequenceId } } });
+      await sleep(200);
+      seqDone = parse(replies[51])?.sequence;
+      return seqDone && ["COMPLETED", "FAILED"].includes(seqDone.state);
+    }, 30000, "Sequenz-Endzustand");
+    check("   Ausführungsreihe läuft asynchron COMPLETED", seqDone?.state === "COMPLETED", JSON.stringify(seqDone).slice(0, 200));
+    const seqStepTools = (seqDone?.steps ?? []).map((st) => st.tool);
+    check("   Auto-Smooth: Backend hat Maus-Ansatz VOR den Klick gesetzt", seqStepTools[0] === "runtime_mouse_move" && seqStepTools[1] === "runtime_click" && seqStepTools[2] === "runtime_ux_scan", seqStepTools.join(" → "));
+    const approach = seqDone.steps[0];
+    check("   Ansatz-Fahrt ist smooth (interpoliert, nicht teleport)", approach.kind === "approach" && approach.tool === "runtime_mouse_move", JSON.stringify(approach).slice(0, 140));
+
     console.log(failures === 0 ? "\nCONTRACT ERFÜLLT: Das Backend funktioniert vollständig ohne echte Godot-Instanz." : `\n${failures} Beweis(e) fehlgeschlagen.`);
     agent.close();
     sim2.kill();

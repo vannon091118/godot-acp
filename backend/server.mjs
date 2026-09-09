@@ -31,7 +31,7 @@ import {
   requireTransition, sseFrame,
   TARGET_STATES, AGENT_STATES, COMMAND_STATES, QA_STATES, ORIGINS,
   TARGET_WORDS, AGENT_WORDS, COMMAND_WORDS, QA_WORDS, humanTool,
-  SSE_CHANNELS, ANOMALY_STATES, WORK_STATES,
+  SSE_CHANNELS, ANOMALY_STATES, WORK_STATES, SEQUENCE_STATES,
 } from "./contract.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -82,6 +82,8 @@ const state = {
   qaRuns: new Map(),
   /** Anomalien (Orchestrator): FAILED/TIMEOUT/isError → atomare Analyse. */
   anomalies: new Map(),  // id -> {id, kind, severity, state, source, message, commandId, tool, correlation, origin, createdAt, updatedAt, analysis}
+  /** Ausführungsreihen: atomare Task-Sequenzen, asynchron abgearbeitet. */
+  sequences: new Map(),
   /** Work-Orders: vom Orchestrator gepackte Arbeitspakete (endet nicht). */
   workOrders: new Map(), // id -> {id, state, origin, goal, correlation, baseline, nextSteps, note, createdAt, updatedAt}
   /** Beobachtungen (Vertrag: Observation) — jede Ziel-Antwort wird eine. */
@@ -99,6 +101,112 @@ state.targets.set(TARGET_ID, {
   id: TARGET_ID, kind: "godot", state: "OFFLINE",
   host: GODOT_HOST, port: GODOT_PORT, lastSeenAt: null, lastError: null,
 });
+
+/* ─────────── Sequenzen (atomare Ausführungsreihen, asynchron) ───────── */
+/**
+ * DIE Harte Regel (Nutzer-Vorgabe): MCP-Nutzung bedeutet sichtbares
+ * Spielfenster, und jeder Task wird vom Backend zu einer atomaren
+ * Ausführungsreihe aufgebaut. Der Agent liefert Absichten (Atome), das
+ * Backend erzeugt die echte Reihenfolge und ERGÄNZT AUTOMATISCH den smoothen
+ * Maus-Ansatz vor jedem Klick — der Agent muss sich um nichts kümmern.
+ * Läuft asynchron: der Aufrufer bekommt sofort die Sequence-ID, der Fortschritt
+ * geht über SSE; Pause/Blockliste/Approval greifen wie bei jedem Command.
+ */
+
+const ATOMIC_ACTION_TOOLS = new Set(["runtime_click", "runtime_drag", "runtime_scroll", "runtime_touch_drag"]);
+const APPROACH_TOOL = "runtime_mouse_move"; // sichtbare, smooth interpolierte Fahrt
+
+function sequenceNeedsSmoothApproach(tool, args) {
+  if (!ATOMIC_ACTION_TOOLS.has(tool)) return false;
+  const a = args ?? {};
+  // Pfad-Klicks ohne Koordinaten: Ansatz braucht ein Ziel — als zusätzlichen
+  // Schritt aus der letzten Scan-Observation ableiten tut der Adapter (find);
+  // hier gilt: nur explizite Koordinaten bekommen den Auto-Ansatz.
+  return Number.isFinite(Number(a.x)) && Number.isFinite(Number(a.y)) && Number(a.x) >= 0 && Number(a.y) >= 0;
+}
+
+function buildSequenceSteps(requested) {
+  const steps = [];
+  for (const raw of requested) {
+    const tool = String(raw.tool ?? "");
+    const args = { ...(raw.arguments ?? raw.args ?? {}) };
+    // Auto-Smooth: vor jeder Aktion mit Koordinaten der smooth Ansatz.
+    // Der Agent muss nichts ergänzen — das Backend baut die ganze Reihe.
+    if (sequenceNeedsSmoothApproach(tool, args)) {
+      steps.push({
+        tool: APPROACH_TOOL,
+        arguments: { x: Number(args.x), y: Number(args.y), smooth: true, duration_ms: 160 },
+        state: "PENDING", kind: "approach", forAction: tool,
+      });
+    }
+    steps.push({
+      tool,
+      arguments: args,
+      state: "PENDING",
+      kind: ATOMIC_ACTION_TOOLS.has(tool) ? "action" : "observation",
+    });
+  }
+  return steps;
+}
+
+function createSequence({ name, steps, createdBy, origin }) {
+  const seq = {
+    id: nextId("seq"),
+    name: String(name || "Ausführungsreihe"),
+    state: "QUEUED",           // QUEUED → RUNNING → COMPLETED | FAILED | BLOCKED | CANCELLED
+    origin: origin || createdBy || "agent",
+    createdBy: createdBy || "agent",
+    steps: buildSequenceSteps(steps ?? []),
+    cursor: 0,
+    note: null,
+    createdAt: now(), updatedAt: now(),
+  };
+  state.sequences.set(seq.id, seq);
+  appendOnly(logEvents, { ts: now(), kind: "sequence", message: `Sequenz ${seq.id} angelegt: ${seq.steps.length} Atome`, sequenceId: seq.id });
+  broadcast(sseFrame("sequence.progress", { sequence: publicSequence(seq) }));
+  broadcastState();
+  return seq;
+}
+
+function publicSequence(seq) {
+  return {
+    id: seq.id, name: seq.name, state: seq.state, origin: seq.origin, createdBy: seq.createdBy,
+    cursor: seq.cursor, total: seq.steps.length, note: seq.note,
+    steps: seq.steps.map((s) => ({ tool: s.tool, kind: s.kind, state: s.state, summary: s.summary ?? null })),
+    createdAt: seq.createdAt, updatedAt: seq.updatedAt,
+  };
+}
+
+function seqSetState(seq, to, note = null) {
+  seq.state = to;
+  seq.note = note;
+  seq.updatedAt = now();
+  broadcast(sseFrame("sequence.progress", { sequence: publicSequence(seq) }));
+  broadcastState();
+}
+
+/** Asynchroner Läufer: ein Atom = ein Command auf dem Bus (Pause/Block greifen). */
+async function executeSequence(seq) {
+  seqSetState(seq, "RUNNING");
+  for (let i = 0; i < seq.steps.length; i++) {
+    if (seq.state === "CANCELLED") return;
+    const step = seq.steps[i];
+    seq.cursor = i;
+    seq.updatedAt = now();
+    const res = await dispatchAndWait({ origin: seq.origin, type: step.tool, tool: step.tool, payload: step.arguments ?? {}, timeoutMs: 30000 });
+    step.ok = !!res.ok;
+    step.summary = res.ok ? summarizeResult(res.result) : (res.reason ?? "fehlgeschlagen");
+    step.state = res.ok ? "PASS" : "FAIL";
+    seq.updatedAt = now();
+    recordObservation({ targetId: TARGET_ID, tool: step.tool, ok: !!res.ok, summary: step.summary, commandId: null });
+    broadcast(sseFrame("sequence.progress", { sequence: publicSequence(seq) }));
+    if (!res.ok) {
+      seqSetState(seq, "FAILED", `Schritt ${i + 1} (${step.tool}) fehlgeschlagen: ${step.summary?.slice(0, 140)}`);
+      return;
+    }
+  }
+  seqSetState(seq, "COMPLETED");
+}
 
 /* ───────────────── QA-Runs (Contract: QaRun · Evidence · Verdict) ───── */
 
@@ -232,6 +340,7 @@ function snapshot() {
       workOrders: [...state.workOrders.values()].map((w) => ({ ...w })),
       observations: state.observations.slice(-30),
     },
+    sequences: [...state.sequences.values()].slice(-10).map(publicSequence),
     stats: { ...state.stats },
     uptimeSeconds: Math.floor((now() - state.startedAt) / 1000),
     ports: { backend: BACKEND_PORT, proxy: PROXY_PORT, godot: GODOT_PORT },
@@ -1181,6 +1290,8 @@ function handleAgentConnection(sock) {
         { name: "backend.get_work", description: "Aktuelles Arbeitspaket des Orchestrators abholen (Baseline, Ziel, nächste Schritte)." },
         { name: "backend.claim_work", description: "Arbeitspaket übernehmen (Status OPEN → CLAIMED)." },
         { name: "backend.get_anomalies", description: "Anomalien + Analyse-Beweise abrufen (vision/ocr/audio/debug-Kette)." },
+        { name: "backend.run_sequence", description: "Task als atomare Ausführungsreihe abgeben — das Backend baut die Reihenfolge, ergänzt automatisch smooth Maus-Ansätze und führt ASYNCHRON aus (sichtbares Fenster Pflicht). Antwort: sequenceId + Status." },
+        { name: "backend.get_sequence", description: "Fortschritt einer Ausführungsreihe abrufen (Schritt-Stati, Beobachtungen)." },
       ];
       if (target?.state === "ONLINE" && connector.isOpen(agent.targetId)) {
         connector.send(agent.targetId, { ...msg, id: `probe-${msg.id}` });
@@ -1295,6 +1406,23 @@ function handleBackendTool(sock, msg, agent, tool) {
         .sort((a, b) => b.createdAt - a.createdAt);
       return reply({ anomalies: list.slice(0, Number(args.limit ?? 20)), orchestratorStats: { ...ORCH.workStats } });
     }
+    case "backend.run_sequence": {
+      const steps = Array.isArray(args.steps) ? args.steps : null;
+      if (!steps || steps.length === 0) return reply({ error: "steps fehlt (Array aus {tool, arguments})" });
+      if (steps.length > 50) return reply({ error: "zu viele Atome (max 50 pro Sequenz) — Task splitten" });
+      const target = state.targets.get(agent.targetId);
+      if (!target || target.state !== "ONLINE") {
+        return reply({ error: "sichtbares Spielfenster nicht erreichbar (Ziel nicht ONLINE) — Spiel mit --mcp starten", blocked: true });
+      }
+      const seq = createSequence({ name: args.name, steps, createdBy: agent.id, origin: "agent" });
+      executeSequence(seq).catch((e) => seqSetState(seq, "FAILED", e.message));
+      return reply({ sequenceId: seq.id, state: seq.state, total: seq.steps.length, note: "asynchron: Fortschritt via backend.get_sequence / SSE sequence.progress" });
+    }
+    case "backend.get_sequence": {
+      const seq = state.sequences.get(String(args.sequenceId ?? ""));
+      if (!seq) return reply({ error: `unbekannte Sequenz ${args.sequenceId}` });
+      return reply({ sequence: publicSequence(seq) });
+    }
     default:
       return writeMsg(sock, { jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: `unbekanntes Backend-Tool: ${tool}` } });
   }
@@ -1315,8 +1443,9 @@ function buildOnboarding(agent) {
       analysisChain: "Bei Anomalien führt das BACKEND automatisch eine atomare Analyse (Vision/OCR/Audio/Debug/Logs) — du musst sie nicht nachbauen; backend.get_anomalies liefert die Beweise.",
     },
     loops: {
-      worker: "1) backend.get_work → 2) Ziel-Tools atomar (ein Call, dann backend.observe) → 3) Ergebnis/Evidence → 4) backend.claim_work.",
-      observe_before_act: "ein Tool-Call pro Schritt; nach jedem Call backend.observe",
+      worker: "1) backend.get_work → 2) Task als backend.run_sequence abgeben (Backend baut die atomare Reihe + smooth Maus automatisch) → 3) backend.get_sequence until COMPLETED/FAILED → 4) backend.claim_work.",
+      sequence_rule: "KEINE Einzel-Klicks mehr: Jeder Task ist eine Ausführungsreihe. Das Backend ergänzt smooth Maus-Ansätze AUTOMATISCH — nie selbst runtime_mouse_move vor Klicks setzen. Beobachtungs-Atome (scan/find) dürfen in die Reihe.",
+      observe_before_act: "innerhalb der Sequenz sorgt das Backend für Schritt-für-Schritt-Ausführung mit Observation je Atom",
     },
     humanInterface: "React-Dashboard (Web) und Ink-Cockpit (Terminal) zeigen denselben Backend-State; sie senden über denselben Command-Bus wie du.",
     nextSteps: [
@@ -1459,10 +1588,35 @@ const server = http.createServer(async (req, res) => {
   if (p === "/api/contract" && req.method === "GET") {
     return sendJson(res, 200, {
       targets: TARGET_STATES, agents: AGENT_STATES, commands: COMMAND_STATES, qa: QA_STATES,
-      anomalies: ANOMALY_STATES, work: WORK_STATES,
+      anomalies: ANOMALY_STATES, work: WORK_STATES, sequences: SEQUENCE_STATES,
       origins: ORIGINS, words: { target: TARGET_WORDS, agent: AGENT_WORDS, command: COMMAND_WORDS, qa: QA_WORDS },
       channels: SSE_CHANNELS,
     });
+  }
+
+  // ── Ausführungsreihen (atomare Task-Sequenzen, asynchron) ──
+  if (p === "/api/sequences" && req.method === "POST") {
+    const body = await readBody(req);
+    const steps = Array.isArray(body.steps) ? body.steps : null;
+    if (!steps || steps.length === 0) return sendJson(res, 400, { error: "steps fehlt (Array aus {tool, arguments})" });
+    const target = state.targets.get(TARGET_ID);
+    if (!target || target.state !== "ONLINE") {
+      return sendJson(res, 409, { error: "sichtbares Spielfenster nicht erreichbar (Ziel nicht ONLINE) — Spiel mit --mcp starten", blocked: true });
+    }
+    const seq = createSequence({ name: body.name, steps, createdBy: "human", origin: "human" });
+    executeSequence(seq).catch((e) => seqSetState(seq, "FAILED", e.message));
+    return sendJson(res, 202, publicSequence(seq));
+  }
+  const seqMatch = p.match(/^\/api\/sequences\/([^/]+)$/);
+  if (seqMatch && req.method === "GET") {
+    const seq = state.sequences.get(decodeURIComponent(seqMatch[1]));
+    return seq ? sendJson(res, 200, publicSequence(seq)) : sendJson(res, 404, { error: "Sequenz nicht gefunden" });
+  }
+  if (seqMatch && req.method === "POST" && p.endsWith("/cancel")) {
+    const seq = state.sequences.get(decodeURIComponent(seqMatch[1]));
+    if (!seq) return sendJson(res, 404, { error: "Sequenz nicht gefunden" });
+    if (seq.state === "RUNNING" || seq.state === "QUEUED") seqSetState(seq, "CANCELLED", "durch Nutzer abgebrochen");
+    return sendJson(res, 200, publicSequence(seq));
   }
 
   // ── Orchestrator: Onboarding, Anomalien, Work-Orders ──
