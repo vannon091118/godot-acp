@@ -148,7 +148,7 @@ func _scenario_pause_save_menu() -> bool:
 	# prüft generisch, ob nach ESC ein neues UI sichtbar wird.
 	var pause_content_visible := _any_new_ui_visible("PauseMenu")
 	ok = _check("pause", "pause UI visible after ESC", pause_content_visible, true) and ok
-var save := _find(start_label_save)
+	var save := _find(start_label_save)
 	if bool(save.get("found", false)):
 		var saved: Variant = await _call_async("runtime_ux_click", {"description": start_label_save})
 		ok = _check("pause", "save button clicked", bool(saved.get("clicked", false)), true) and ok
