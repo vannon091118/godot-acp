@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+
+# Node (Client-Tools)
+node_modules/
+package-lock.json
+
+# Godot user data (nie ins Repo — siehe PERSISTENCE.md)
+user/
+*.translation
+.godot/
+
+# Editor/OS junk
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
+
+# lokale Artefakte
+*.log
+.commit_msg.txt
+.doki/

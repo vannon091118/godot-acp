@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-label="GODOT ACP Banner">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1020"/>
+      <stop offset="55%" stop-color="#101a33"/>
+      <stop offset="100%" stop-color="#1b2a4a"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#4fc3f7"/>
+      <stop offset="100%" stop-color="#a78bfa"/>
+    </linearGradient>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#4fc3f7" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#4fc3f7" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#4fc3f7" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="300" rx="18" fill="url(#bg)"/>
+
+  <!-- Protocol lines: Agent links, Godot rechts, Pakete unterwegs -->
+  <g stroke="url(#line)" stroke-width="2.5" fill="none">
+    <path d="M 120 118 H 560"/>
+    <path d="M 640 182 H 1080"/>
+    <path d="M 120 182 H 400"/>
+    <path d="M 800 118 H 1080"/>
+  </g>
+  <g fill="#4fc3f7">
+    <rect x="250" y="112" width="16" height="12" rx="2" opacity="0.85"/>
+    <rect x="430" y="176" width="16" height="12" rx="2" opacity="0.6"/>
+    <rect x="880" y="112" width="16" height="12" rx="2" opacity="0.6"/>
+    <rect x="960" y="176" width="16" height="12" rx="2" opacity="0.85"/>
+  </g>
+
+  <!-- Agent-Knoten -->
+  <g>
+    <rect x="60" y="94" width="120" height="56" rx="10" fill="#0e1628" stroke="#4fc3f7" stroke-opacity="0.7" stroke-width="2"/>
+    <text x="120" y="128" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="600" fill="#dbe7ff">Agent</text>
+  </g>
+
+  <!-- Godot-Knoten -->
+  <g>
+    <rect x="1020" y="158" width="120" height="56" rx="10" fill="#0e1628" stroke="#a78bfa" stroke-opacity="0.8" stroke-width="2"/>
+    <text x="1080" y="192" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="600" fill="#e6dcff">Godot</text>
+  </g>
+
+  <!-- Titel -->
+  <text x="600" y="96" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="58" font-weight="800" fill="#f2f6ff" letter-spacing="4">GODOT ACP</text>
+  <text x="600" y="136" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="21" fill="#9fb4d8" letter-spacing="1">Agent Control Protocol — dein Spiel, ferngesteuert mit Manieren</text>
+
+  <!-- Badges -->
+  <g font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="600">
+    <rect x="330" y="216" width="150" height="34" rx="17" fill="#12203c" stroke="#2c4470"/>
+    <text x="405" y="238" text-anchor="middle" fill="#7fd4ff">Godot 4.x</text>
+
+    <rect x="496" y="216" width="150" height="34" rx="17" fill="#12203c" stroke="#2c4470"/>
+    <text x="571" y="238" text-anchor="middle" fill="#c4b5fd">MCP · JSON-RPC</text>
+
+    <rect x="662" y="216" width="208" height="34" rx="17" fill="#12203c" stroke="#2c4470"/>
+    <text x="766" y="238" text-anchor="middle" fill="#8ee6b8">projektagnostisch · 143+ Tools</text>
+  </g>
+
+  <!-- Footnote -->
+  <text x="600" y="282" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#5f7396">stdio / TCP · JSON-RPC 2.0 · sichtbares Runtime-Testing · Autonomous Repair</text>
+</svg>

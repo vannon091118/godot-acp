@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "godot-runtime": {
+      "command": "<ABSOLUTE_PROJECT_PATH>/mcp_bridge.cmd",
+      "args": [],
+      "env": {
+        "MCP_HOST": "127.0.0.1",
+        "MCP_PORT": "9090"
+      }
+    }
+  }
+}

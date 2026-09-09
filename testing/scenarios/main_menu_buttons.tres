@@ -1,0 +1,25 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/mcp/testing/mcp_test_scenario.gd" id="1_scenario"]
+
+[resource]
+script = ExtResource("1_scenario")
+id = "main_menu_buttons"
+description = "Start screen: detect interactable controls (labels come from the project config; see application/mcp/e2e_start_label)"
+scene_path = ""
+wait_frames = 30
+requires_renderer = true
+enabled_by_default = true
+steps = Array[Dictionary]([{
+"tool": "runtime_ux_analyze",
+"args": {},
+"expect_key": "elements.size",
+"expect_op": ">=",
+"expect_value": 2
+}, {
+"tool": "runtime_ux_analyze",
+"args": {},
+"expect_key": "interactables.size",
+"expect_op": ">=",
+"expect_value": 1
+}])
