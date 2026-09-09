@@ -175,6 +175,15 @@ node addons/mcp/client/playthroughs/atomic/mcp_player_atom.js runtime_mcp_status
 node addons/mcp/client/playthroughs/atomic/atomic_session.js
 ```
 
+### Schritt 7: Commit-Hooks aktivieren (für Contributor)
+
+```bash
+git config core.hooksPath testing/hooks
+```
+
+Das aktiviert das Commit-Gate (`pre-commit`) und den KI-Signaturen-Filter
+(`commit-msg`) — Details in [agent.md §2.6](agent.md).
+
 ---
 
 ## Architektur in 20 Sekunden

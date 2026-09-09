@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# commit-msg — agent.md §2.4/§2.5: KI-Signaturen in Commit-Messages sind
+# verboten. Der Hook lehnt den Commit ab, solange eine solche Signatur
+# enthalten ist. Kein Verhandlungsbasis.
+#
+# Installation (einmalig pro Clone):
+#   git config core.hooksPath testing/hooks
+
+set -u
+
+MSG_FILE="${1:-}"
+if [ -z "$MSG_FILE" ] || [ ! -f "$MSG_FILE" ]; then
+  echo "commit-msg: keine Message-Datei erhalten — Hook falsch aufgerufen" >&2
+  exit 1
+fi
+
+# Verbotene Signaturen (agent.md §2.5): KI-Footer jeglicher Art.
+FORBIDDEN='Generated with Codebuff|Co-[Aa]uthored-[Bb]y:.*Codebuff|Generated with .*(Copilot|Claude|ChatGPT|OpenAI|Codebuff)|Co-[Aa]uthored-[Bb]y:.*(Copilot|Claude|ChatGPT|OpenAI|Codebuff)'
+
+if grep -qiE "$FORBIDDEN" "$MSG_FILE"; then
+  echo "" >&2
+  echo "commit-msg: COMMIT ABGELEHNT (agent.md §2.5)" >&2
+  echo "  KI-Signaturen sind in diesem Repo verboten:" >&2
+  echo "  'Generated with …' / 'Co-Authored-By: …' (Codebuff/Copilot/Claude/ChatGPT)." >&2
+  echo "  Die Commit-Message gehört dem Autor, nicht dem Werkzeug." >&2
+  echo "  Nachricht bereinigen und erneut committen." >&2
+  exit 1
+fi
+
+exit 0

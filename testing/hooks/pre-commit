@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# pre-commit — führt das Verifikations-Gate aus (agent.md §2.2).
+# Installation: git config core.hooksPath testing/hooks
+
+set -u
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+GATE="$ROOT/testing/commit_gate.sh"
+
+if [ ! -f "$GATE" ]; then
+  echo "pre-commit: Gate fehlt: $GATE — überspringe Verifikation" >&2
+  exit 0
+fi
+
+bash "$GATE" --cached

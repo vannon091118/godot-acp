@@ -70,23 +70,38 @@ was er ist, ist kein Commit.
 <typ>(<scope>): <kurze imperative Zusammenfassung, Deutsch>
 
 <Body: Warum vor Was. Beleg/Ref auf Befund, Szenario oder Vertrag.>
-
-🤖 Generated with Codebuff
-Co-Authored-By: Codebuff <noreply@codebuff.com>
 ```
 
 - Scope: `mcp` oder `mcp/<bereich>` (`mcp/editor`, `mcp/runtime`, `mcp/docs`, …).
 - Body: 1–3 Sätze.
+- **Keine KI-Signaturen.** Footer wie „Generated with Codebuff“ oder
+  „Co-Authored-By: …Codebuff/Copilot/Claude/ChatGPT“ sind verboten — die
+  `commit-msg`-Hook (`testing/hooks/commit-msg`) lehnt solche Commits ab.
+  Die Message gehört dem Autor, nicht dem Werkzeug.
 - Push, Merge, Rebase, Force-Push: nur auf expliziten Auftrag des Menschen.
 
 ### 2.5 Verbotene Commits
 
+- Commits mit KI-Signaturen im Footer (siehe §2.4 — Hook erzwingt es).
 - Commits, die Kopplung einführen (Spiel-Pfade/Labels im Addon-Kern,
   `ENTKOPPLUNG.md` §6).
 - Commits, die an Pflicht-Doku vorbeiarbeiten (`agent.md`, `ENTKOPPLUNG.md`,
   `MCP_INDEX.md`, `PERSISTENCE.md`).
 - Commits mit `WIP`, TODO-Stubs ohne Szenario-Verweis oder unbelegten
   „fix"-Behauptungen.
+
+### 2.6 Commit-Hooks (Installation, Pflicht für jeden Clone)
+
+```bash
+git config core.hooksPath testing/hooks
+```
+
+| Hook | Aufgabe |
+|---|---|
+| `pre-commit` | führt `testing/commit_gate.sh --cached` aus (agent.md §2.2) |
+| `commit-msg` | lehnt Commits mit KI-Signaturen ab (agent.md §2.4/§2.5) |
+
+Ein Clone ohne aktivierte Hooks ist ein Verstoß gegen diese Datei.
 
 ---
 
