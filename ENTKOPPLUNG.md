@@ -121,10 +121,16 @@ existiert, ohne zu raten.
   über einen cwd-immunen Wrapper mit **absolutem** Pfad in der Client-Config.
 - `.mcp.json` ist eine **Vorlage**: Host-Projekte tragen ihren eigenen
   absoluten Wrapper-Pfad ein (`<ABSOLUTE_PROJECT_PATH>/mcp_bridge.cmd`).
-- **Backend-Proxy (optional, empfohlen):** Agent-Clients können statt `:9090`
-  den Proxy `:9099` des Godot-unabhängigen Backends nutzen — gleiche Ports-
+- **Backend (Autorität + Orchestrator, Standard-Weg):** Agent-Clients verbinden
+  sich mit dem Proxy `:9099` des Godot-unabhängigen Backends — gleiche Ports-
   Logik, konfigurierbar (`ACP_BACKEND_PORT`/`ACP_PROXY_PORT`/`ACP_GODOT_PORT`).
-  Das Backend hält den Target-State, das Spiel bleibt austauschbar.
+  Das Backend hält Target-/Agent-State, Command-Bus, Persistenz UND den
+  Orchestrator (Beobachtung endet nicht, Work-Orders, Anomalie-Analyse mit
+  generisch gebundenen Ziel-Capabilities). Der Godot-Adapter (dieses Addon)
+  führt nur aus und beobachtet; Control-Mechanismen (`acp/pause_agent` & Co.)
+  sind backend-initiiert, die Backend-Autorität hängt nicht vom Ziel-ACK ab.
+  Onboarding (`backend.onboard`) macht Code-Lektüre des Addons überflüssig.
+  Das Spiel bleibt austauschbar; Fake-Godot existiert NUR als Contract-Test.
 
 ---
 

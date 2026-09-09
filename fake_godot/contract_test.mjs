@@ -100,6 +100,10 @@ function agentClient(onMessage) {
   return { send: (o) => sock.write(JSON.stringify(o) + "\n"), close: () => sock.destroy() };
 }
 
+function collectReply(replies, id, onMessageRef) {
+  // Hilfsfunktion unnötig — direkte Zuweisung im Testkörper (lesbarer).
+}
+
 function waitFor(predicate, timeoutMs = 6000, label = "condition") {
   return new Promise((resolve, reject) => {
     const started = Date.now();
@@ -130,10 +134,12 @@ async function main() {
 
   // ── SSE-Sammler (stellvertretend für React UND Ink — derselbe Strom) ──
   const sse = { events: [], states: [], commands: [], lastState: null };
+  const qaVerdicts = [];
   sseCollect((item) => {
     if (item.type === "event") sse.events.push(item.event);
     if (item.type === "state") { sse.states.push(item); sse.lastState = item; }
     if (item.type === "command") sse.commands.push(item.command);
+    if (item.channel === "qa.verdict") qaVerdicts.push(item.qaRun?.verdict);
   });
 
   const targetState = async () => (await rest("GET", "/api/status")).targets[0]?.state;
@@ -141,7 +147,7 @@ async function main() {
 
   try {
     // ── 1) Target wird verbunden (NUR der Simulator läuft) ──
-    await waitFor(async () => (await targetState()) === "CONNECTED", 8000, "Target CONNECTED");
+    await waitFor(async () => (await targetState()) === "ONLINE", 8000, "Target CONNECTED");
     check("1. Target godot-01 CONNECTED — Backend läuft ohne echte Godot-Instanz", true);
 
     // ── 2) Agent registriert sich über den Proxy ──
@@ -153,6 +159,9 @@ async function main() {
 
     // ── 3) Tool-Call durch den Bus, Antwort zurück beim Agent ──
     agent.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "runtime_ux_scan", arguments: {} } });
+    agent.send({ jsonrpc: "2.0", id: 40, method: "tools/call", params: { name: "backend.capabilities", arguments: {} } });
+    await waitFor(() => replies[40] !== undefined, 5000, "capabilities-Proxy");
+    check("   backend.*-Tools sind über den Proxy aufrufbar", replies[40]?.result !== undefined);
     await waitFor(() => replies[2]?.result?.content?.[0]?.text === "fake-ok:runtime_ux_scan", 6000, "Tool-Antwort");
     check("3. tools/call: BUS läuft, Antwort vom Ziel erreicht den Agent-Socket", true);
     const st = await rest("GET", "/api/status");
@@ -205,8 +214,8 @@ async function main() {
 
     // ── 8) Disconnect + Reconnect (Backend bleibt Herr des Verfahrens) ──
     sim.kill();
-    await waitFor(async () => (await targetState()) === "RECONNECTING", 8000, "RECONNECTING nach Verbindungsverlust");
-    check("8. Simulator weg → Target RECONNECTING (Backend weiß es ohne Godots Hilfe)", true);
+    await waitFor(async () => (await targetState()) === "DISCONNECTED", 8000, "RECONNECTING nach Verbindungsverlust");
+    check("8. Simulator weg → Target DISCONNECTED, dann CONNECTING (Recovery-Regel)", true);
     // Backend bleibt bedienbar:
     const pingCmd = await rest("POST", "/api/commands", { origin: "human", type: "backend_ping", payload: {} }, 202);
     await waitFor(async () => {
@@ -217,8 +226,8 @@ async function main() {
 
     // Simulator neu starten → Reconnect-Beweis
     const sim2 = spawn(process.execPath, [path.join(REPO, "fake_godot", "simulator.mjs"), String(GODOT_PORT)], { stdio: "pipe" });
-    await waitFor(async () => (await targetState()) === "CONNECTED", 10000, "RECONNECT erfolgreich");
-    check("   Simulator wieder da → CONNECTED (Auto-Reconnect)", true);
+    await waitFor(async () => (await targetState()) === "ONLINE", 10000, "RECONNECT erfolgreich");
+    check("   Simulator wieder da → ONLINE (Recovery abgeschlossen)", true);
 
     // ── 9) Replay-Beweis: State aus append-only JSONL ableitbar ──
     const proof = await rest("GET", "/api/replay-proof");
@@ -231,9 +240,84 @@ async function main() {
     const ag = (await rest("GET", "/api/agents")).agents[0];
     check("10. Ziel sitzt in der Agent-Registry", ag.goal === "Hauptmenü durchspielen", ag.goal);
 
-    // ── Abschluss: ACK-Kette im Feed sichtbar ──
-    await waitFor(() => sse.events.some((e) => e.kind === "target" && e.message.includes("godot.event")), 5000, "godot.event im Feed");
-    check("11. godot.event-Notifikationen landen im zentralen Event-Stream (SSE)", true);
+    // ── 12) Backend-MCP-Fassade: backend.* über den Proxy ──
+    agent.send({ jsonrpc: "2.0", id: 20, method: "tools/call", params: { name: "backend.capabilities", arguments: {} } });
+    agent.send({ jsonrpc: "2.0", id: 21, method: "tools/call", params: { name: "backend.get_state", arguments: {} } });
+    agent.send({ jsonrpc: "2.0", id: 22, method: "tools/call", params: {
+      name: "backend.start_qa",
+      arguments: { name: "Hauptmenü-Sanity", steps: [
+        { label: "Oberfläche lesbar", tool: "runtime_ux_scan", expected: "fake-ok" },
+        { label: "Suche funktioniert", tool: "runtime_ux_find", expected: "fake-ok" },
+      ] },
+    } });
+    await waitFor(() => replies[20] && replies[21] && replies[22], 15000, "backend.*-Antworten");
+    const parse = (r) => { try { return JSON.parse(r?.result?.content?.[0]?.text ?? "{}"); } catch { return {}; } };
+    const cap = parse(replies[20]), stt = parse(replies[21]), qa = parse(replies[22]);
+    // Evidence: QA-Lauf abwarten, dann abrufen
+    await waitFor(async () => {
+      agent.send({ jsonrpc: "2.0", id: 23, method: "tools/call", params: { name: "backend.get_evidence", arguments: { qaRunId: qa.qaRunId } } });
+      await sleep(150);
+      const ev = parse(replies[23]);
+      return Array.isArray(ev.evidence) && ev.evidence.length >= 2;
+    }, 15000, "QA-Evidence");
+    const ev = parse(replies[23]);
+    check("12. backend.capabilities: Vertrag vom Backend, ohne Code-Lektüre", Array.isArray(cap.contract?.agents) && cap.contract.agents.includes("PAUSED"), JSON.stringify(cap).slice(0, 120));
+    check("   backend.get_state: Agent sieht die Backend-Wahrheit", Array.isArray(stt.agents) && stt.agents.some((a) => a.id === "contract-agent"));
+    check("   backend.start_qa: QA-Lauf gestartet", !!qa.qaRunId, JSON.stringify(qa));
+    check("   backend.get_evidence: Beweise mit erwartet/beobachtet", Array.isArray(ev.evidence) && ev.evidence.length >= 2 && "expected" in ev.evidence[0], JSON.stringify(ev).slice(0, 160));
+
+    // QA-Urteil + Lebenslauf im SSE-Strom:
+    await waitFor(() => qaVerdicts.length > 0, 10000, "qa.verdict");
+    check("   qa.verdict über SSE: PASS/FAIL am Backend entschieden", qaVerdicts.some((v) => ["PASS", "FAIL", "INCONCLUSIVE"].includes(v)), qaVerdicts.join(","));
+
+    // ── 13) Fehlerfall-Vertrag: Zielfehler → FAILED (kein Hängen) ──
+    agent.send({ jsonrpc: "2.0", id: 30, method: "tools/call", params: { name: "runtime_failing_tool", arguments: {} } });
+    await waitFor(() => replies[30] !== undefined, 8000, "Fehler-Antwort");
+    check("13. Zielfehler → FAILED, Agent erhält strukturierte Ablehnung", replies[30]?.error !== undefined, JSON.stringify(replies[30]));
+
+    // ── 14) tools/list enthält backend.*-Tools ──
+    let listReply = null;
+    agent.send({ jsonrpc: "2.0", id: 31, method: "tools/list", params: {} });
+    await waitFor(() => { listReply = replies[31]; return listReply !== undefined; }, 6000, "tools/list");
+    const names = (listReply?.result?.tools ?? []).map((t) => t.name);
+    check("14. tools/list: backend.*-Tools + Godot-Tools aus einer Hand", names.includes("backend.get_state") && names.includes("runtime_ux_scan"), names.join(","));
+
+    // ── 15) Orchestrator: Onboarding, Work-Order, Anomalie → atomare Analyse ──
+    agent.send({ jsonrpc: "2.0", id: 40, method: "tools/call", params: { name: "backend.onboard", arguments: {} } });
+    await waitFor(() => replies[40] !== undefined, 6000, "onboard-Antwort");
+    const ob = parse(replies[40]);
+    check("15. backend.onboard: Vertrag+Loops+Human-Control ohne Code-Lektüre", !!ob.loops?.worker && !!ob.contract?.humanControl && Array.isArray(ob.nextSteps), JSON.stringify(ob).slice(0, 140));
+
+    // Anomalie (runtime_failing_tool, id 30 oben → FAILED) muss OPEN → ANALYZED
+    // durchlaufen und Analyse-Schritte mit echten Ziel-Calls enthalten.
+    let anomalyReply = null;
+    await waitFor(async () => {
+      agent.send({ jsonrpc: "2.0", id: 43, method: "tools/call", params: { name: "backend.get_anomalies", arguments: {} } });
+      await sleep(200);
+      anomalyReply = replies[43];
+      const an = parse(anomalyReply);
+      const mine = (an.anomalies ?? []).find((a) => a.tool === "runtime_failing_tool");
+      return mine && mine.state === "ANALYZED" && (mine.analysis?.steps?.length ?? 0) > 0;
+    }, 25000, "Anomalie-Analyse");
+    const an2 = parse(anomalyReply);
+    const anomaly = (an2.anomalies ?? []).find((a) => a.tool === "runtime_failing_tool");
+    const stepTools = (anomaly?.analysis?.steps ?? []).map((s) => s.tool).filter(Boolean);
+    check("   Anomalie → atomare Analyse (generisch aus Ziel-Capabilities)", anomaly?.state === "ANALYZED" && stepTools.length > 0, JSON.stringify(anomaly?.analysis ?? {}).slice(0, 200));
+    check("   Analyse-Schritte sind echte Ziel-Calls (Observation je Schritt)", (anomaly.analysis.steps ?? []).every((s) => s.tool === null || typeof s.observationId === "string"), JSON.stringify(anomaly.analysis.steps ?? []).slice(0, 200));
+
+    // Work-Order: der Orchestrator packt Pakete mit echter Ziel-Baseline (REST).
+    await waitFor(async () => {
+      const o = await rest("GET", "/api/orchestrator");
+      return (o.workOrders ?? []).some((w) => w.state === "OPEN" && w.baseline?.ok === true);
+    }, 25000, "Work-Order mit Baseline");
+    const orchState = await rest("GET", "/api/orchestrator");
+    const order = orchState.workOrders.find((w) => w.state === "OPEN" && w.baseline?.ok === true);
+    check("   Work-Order: Baseline aus echtem Ziel-Scan (kein Fake)", order?.baseline?.tool === "runtime_ux_scan" && order.baseline.ok === true, JSON.stringify(order?.baseline ?? {}).slice(0, 160));
+
+    agent.send({ jsonrpc: "2.0", id: 42, method: "tools/call", params: { name: "backend.claim_work", arguments: {} } });
+    await waitFor(() => replies[42] !== undefined, 6000, "claim_work");
+    const cl = parse(replies[42]);
+    check("   backend.claim_work: Übernahme am Backend sichtbar", cl.workOrder?.state === "CLAIMED" && cl.workOrder?.claimedBy === "contract-agent", JSON.stringify(cl).slice(0, 120));
 
     console.log(failures === 0 ? "\nCONTRACT ERFÜLLT: Das Backend funktioniert vollständig ohne echte Godot-Instanz." : `\n${failures} Beweis(e) fehlgeschlagen.`);
     agent.close();

@@ -204,19 +204,28 @@ Godot-Adapter (das Addon: runtime/ editor/ vision/ ux/ testing/ autonomy/)
 Godot (Spiel, MCP-Tools :9090)
 ```
 
-**Die Rollenverteilung:** Das **Backend ist die Autorität** — Zustände, Befehle,
-Blockaden, Freigaben und Historie leben in `backend/` und laufen ohne Godot.
-Das Godot-ACP ist **Adapter/Execution-Layer**: Es enthält die wertvolle
-Godot-Fähigkeit (Runtime-/Input-Tools, Vision, UX, E2E, Autonomy-Workspace,
-Chains, Run-Trace), besitzt aber keine Systemzustände mehr. Der Contract-Test
+**Die Rollenverteilung:** Das **Backend ist die Autorität UND der Orchestrator** —
+Zustände, Befehle, Blockaden, Freigaben, Historie *und die selbstständige
+Arbeitsorganisation* leben in `backend/` und laufen ohne Godot. Der Orchestrator
+beobachtet endet nicht, packt Work-Orders mit echter Baseline und triggert
+**nur bei echten Anomalien** (FAILED/TIMEOUT/isError) eine atomare
+Analyse-Kette — generisch aus den echten Ziel-Capabilities (Vision/OCR/Audio/
+Debug/Logs), nicht aus einer Hardcode-Liste. Das Godot-ACP ist
+**Adapter/Execution-Layer**: Es enthält die wertvolle Godot-Fähigkeit
+(Runtime-/Input-Tools, Vision, UX, E2E, Autonomy-Workspace, Chains,
+Run-Trace), besitzt aber keine Systemzustände mehr. Der Contract-Test
 (`fake_godot/`) beweist, dass das Backend **vollständig ohne echte
-Godot-Instanz** funktioniert. Einzelheiten: [backend/README.md](backend/README.md).
+Godot-Instanz** funktioniert; die reale Strecke wurde zusätzlich mit echtem
+Godot 4.7.2 geprüft (echter UX-Scan mit Controls, echter Pause-ACK,
+Blockliste, automatische Anomalie-Analyse mit echten Godot-Tools,
+Reconnect, Persistenz-Replay). Einzelheiten: [backend/README.md](backend/README.md).
 
-Vollständige Tool-Liste und Architektur: [MCP_INDEX.md](MCP_INDEX.md).
-
-> **Bootstrap für Agenten:** Nach dem Verbinden **zuerst** `runtime_mcp_capabilities`
-> aufrufen — das Tool liefert Projektkonfig, Capabilities, die vorgeschriebenen
-> Loops (atomare Kette!) und Transport. Kein Datei-Lesen nötig.
+> **Bootstrap für Agenten (ohne Code-Lektüre):** `backend.onboard` liefert
+> Vertrag, Worker-Loop (`get_work → atomarer Call → observe → claim_work`),
+> Human-Control-Regel und nächste Schritte in einem Objekt. Zusätzlich gilt:
+> Nach dem Verbinden **zuerst** `runtime_mcp_capabilities` aufrufen — das Tool
+> liefert Projektkonfig, Capabilities, die vorgeschriebenen Loops (atomare
+> Kette!) und Transport.
 
 ---
 
@@ -243,7 +252,7 @@ Vollständige Tool-Liste und Architektur: [MCP_INDEX.md](MCP_INDEX.md).
 | [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md) | 6-Schritte-Agent-Loop & Repair-Loop |
 | [PLAYTEST_HANDOFF.md](PLAYTEST_HANDOFF.md) | Spieler-Vertrag (player/qa/dev-Profile) |
 | [BESTANDSAUFNAHME.md](BESTANDSAUFNAHME.md) | Modul-/Tool-Bilanz & Lücken-Register |
-| [backend/README.md](backend/README.md) | Backend-Autorität: Registries, Command-Bus, Contract-Test |
+| [backend/README.md](backend/README.md) | Backend-Autorität + Orchestrator: Registries, Command-Bus, Anomalie-Analyse, Contract-Test, reale Strecke |
 | [ROADMAP.md](ROADMAP.md) | Wo die Reise hingeht |
 
 ---

@@ -112,13 +112,16 @@ F-09 geschlossen.
 | Baustein | Pfad | Zustand |
 |---|---|---|
 | Zentralserver | `backend/server.mjs` | ✅ Target-/Agent-Registry, Command-Bus als vollwertige Zustandsmaschine (`CREATED→QUEUED→DISPATCHED→RUNNING→COMPLETED` + `WAITING_APPROVAL/REJECTED/BLOCKED/CANCELLED/TIMEOUT/FAILED`), Origins `human/agent/system/qa`, REST + SSE |
-| Adapter-Vertrag | Connector in server.mjs | ✅ besitzt NICHTS; meldet nur `godot.connected/disconnected/state_changed/event/command_result`, Backend entscheidet |
+| Orchestrator | in server.mjs | ✅ endet nicht: adaptive Beobachtungsschleife, Work-Orders mit echter Baseline (`backend.get_work`/`claim_work`), Anomalie-Entities bei FAILED/TIMEOUT/isError → automatische ATOMARE Analyse-Kette, Tools generisch aus den echten Ziel-Capabilities (Vision/OCR/Audio/Debug/Logs), alles Commands auf demselben Bus |
+| Onboarding | `backend.onboard` + `/api/onboard` | ✅ externen Agenten wird Vertrag, Worker-Loop, Human-Control-Regel und nächste Schritte in einem Objekt geliefert — null Code-Lektüre |
+| Adapter-Vertrag | Connector in server.mjs | ✅ besitzt NICHTS; ONLINE erst nach echtem MCP-Handshake (kein Schein-Verbunden); meldet `godot.*`, Backend entscheidet |
 | Persistenz | `backend/persistence/jsonl.mjs` → `backend/data/*.jsonl` | ✅ append-only zuerst (events/commands/sessions); State ist Fold über Log, bewiesen via `/api/replay-proof`; PAUSED-Agenten überleben Neustarts |
 | Agent-Proxy | `:9099` in server.mjs | ✅ MCP-Fassade: Agent kennt nur den Proxy; Tool-Calls laufen als Commands durch den Bus (Pause ⇒ BLOCKED, Blockliste ⇒ BLOCKED mit Grund, Approval ⇒ WAITING_APPROVAL) |
-| Web-Cockpit | `dashboard/` (React+Vite) | ✅ zeigt NUR die Backend-Wahrheit; freundliche deutsche Wörter statt MCP-Begriffe („Oberfläche ablesen" = `runtime_ux_scan`); Sperren mit Grund, Freigabe-Box, Live-Feed |
-| Terminal-Cockpit | `cli/dashboard.mjs` | ✅ zweites Frontend, kein zweites Gehirn: SSE + REST, null eigene Logik; `ink` optional (sonst Poll-Modus) |
-| Contract-Test-Ziel | `fake_godot/simulator.mjs` | ✅ simuliert Godot vollständig: tools/list/call, pause/resume/set_goal-ACKs, `godot.event`-Observations |
-| Contract-Test | `fake_godot/contract_test.mjs` | ✅ 19/19 PASS: volle Beweiskette inkl. Disconnect→RECONNECTING (Backend bleibt bedienbar)→Reconnect, SSE-Sicht beider Frontends, JSONL-Replay |
+| Web-Cockpit | `dashboard/` (React+Vite) | ✅ zeigt NUR die Backend-Wahrheit; freundliche deutsche Wörter statt MCP-Begriffe („Oberfläche ablesen" = `runtime_ux_scan`); Sperren mit Grund, Freigabe-Box, Orchestrator-/Anomalie-Karte, Live-Feed |
+| Terminal-Cockpit | `cli/dashboard.mjs` | ✅ zweites Frontend, kein zweites Gehirn: SSE + REST, null eigene Logik; echte Freigabe-Entscheidung `[y]/[n]`; `ink` optional (sonst Poll-Modus) |
+| Contract-Test-Ziel | `fake_godot/simulator.mjs` | ✅ simuliert Godot vollständig: tools/list/call, pause/resume/set_goal-ACKs, `godot.event`-Observations, Fehler-Tool |
+| Contract-Test | `fake_godot/contract_test.mjs` | ✅ PASS: volle Beweiskette inkl. Orchestrator (Onboarding, Work-Order mit echter Baseline, Anomalie→Analyse mit echten Ziel-Calls), Disconnect→Reconnect, SSE-Sicht beider Frontends, JSONL-Replay |
+| **Reale Godot-Strecke** | Testprojekt + echtes Godot 4.7.2 | ✅ bewiesen: ONLINE nach echtem Handshake, echter UX-Scan, echter Pause-ACK, gezielte Blockliste, automatische Anomalie-Analyse mit echten Godot-Tools (runtime_screenshot/ocr/ux_logs), Kill→Reconnect, Persistenz-Replay (118 Commands faltbar) |
 
 **Architektur-Satz:** Der Agent verbindet sich NUR mit dem Proxy (`:9099`), nie
 mehr direkt mit dem Spiel. Einfluss ohne Agent-Chat = Command mit `origin=human`

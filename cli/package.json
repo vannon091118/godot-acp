@@ -1,0 +1,11 @@
+{
+  "name": "godot-acp-cli",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GODOT ACP Terminal-Cockpit — zweites Frontend, kein zweites Gehirn.",
+  "type": "module",
+  "dependencies": {
+    "ink": "^7.1.1",
+    "react": "^19.3.0"
+  }
+}

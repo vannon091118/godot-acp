@@ -96,6 +96,17 @@ const server = net.createServer((sock) => {
 
       if (msg.method === "tools/call") {
         const tool = msg.params?.name ?? "?";
+        // Vertragsfall: Fehler-Tool meldet einen echten JSON-RPC-Fehler —
+        // das Backend muss daraus FAILED machen (kein Hängen, kein fake-ok).
+        if (tool === "runtime_failing_tool") {
+          setTimeout(() => {
+            sock.write(JSON.stringify({
+              jsonrpc: "2.0", id,
+              error: { code: -32000, message: "simulierte Zielfehler: runtime_failing_tool ist kaputt" },
+            }) + "\n");
+          }, 60);
+          continue;
+        }
         // Kleine Latenz: RUNNING-Zustand im Backend wird beobachtbar.
         setTimeout(() => {
           sock.write(JSON.stringify({

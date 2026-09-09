@@ -28,19 +28,39 @@ siehe `AGENTS.md`).
 - [x] **Backend-Autorität (v0.2, Rollenschnitt gefallen):** `backend/server.mjs` ist das
       Kontrollsystem — Target-/Agent-Registry, Command-Bus als echte Zustandsmaschine
       (CREATED→QUEUED→DISPATCHED→RUNNING→COMPLETED + Nebenzustände), Origins
-      human/agent/system/qa auf EINEM Bus, Blockliste als Entities mit Grund,
-      append-only JSONL mit Replay-Beweis (`/api/replay-proof`), Godot-Connector
-      entmachtet (meldet nur godot.*, Backend entscheidet). Struktur: `backend/`
-      (Autorität) · `fake_godot/` (Contract-Test-Ziel) · `dashboard/` (React) ·
-      `cli/` (Ink, zweites Frontend ohne eigene Logik). Contract-Test 19/19 PASS
-      beweist: Backend funktioniert vollständig ohne echte Godot-Instanz —
-      inkl. Disconnect→RECONNECTING→Reconnect bei vollem Bedienbestand
+      human/agent/system/qa auf EINEM Bus, Blockliste als Entities mit Grund
+      (dedupliziert pro scope+value), append-only JSONL mit Replay-Beweis
+      (`/api/replay-proof`), Godot-Connector entmachtet (meldet nur godot.*,
+      Backend entscheidet). Struktur: `backend/` (Autorität) · `fake_godot/`
+      (Contract-Test-Ziel) · `dashboard/` (React) · `cli/` (Ink, zweites Frontend
+      ohne eigene Logik). Contract-Test PASS beweist: Backend funktioniert
+      vollständig ohne echte Godot-Instanz — inkl. Disconnect→Reconnect bei
+      vollem Bedienbestand
+- [x] **Orchestrator (v1.0, Zentralisierung auf Mindestmaß an Fragmentierung):**
+      Das Backend endet nicht — adaptive Beobachtungsschleife (Intervall reagiert
+      auf Anomalien/QA/Offline), Work-Orders mit echter Baseline-Observation
+      (`backend.get_work`/`backend.claim_work`), Anomalie-Entities bei
+      FAILED/TIMEOUT/isError mit automatischer ATOMARER Analyse-Kette, deren
+      Tools generisch aus den echten Ziel-Capabilities gewählt werden
+      (Vision/OCR/Audio/Debug/Logs — kein Hardcode), alle Calls normale Commands
+      über denselben Bus. Generisches Anbinden: Ziel-Tools per tools/list
+      gebunden, Onboarding (`backend.onboard` + `/api/onboard`) liefert externen
+      Agenten Vertrag+Loops+Human-Control ohne Code-Lektüre
+- [x] **Reale Godot-Strecke bewiesen (Release-Kriterium):** echtes Godot 4.7.2
+      mit dem Addon als Autoload gegen das Backend: ONLINE erst nach echtem
+      MCP-Handshake, echter UX-Scan mit Controls, echter acp/pause-ACK mit
+      Backend-Blockierung, Blockliste gezielt, automatische Anomalie-Analyse
+      mit echten Godot-Tools (Screenshot/OCR/Logs), Kill→Reconnect,
+      Persistenz-Replay über Backend-Neustart. Reale acp/*-Control-Methoden
+      (pause/resume/stop/set_goal) jetzt Teil des Godot-Adapters
 
 ## 🔨 In Arbeit (v1.1)
 
 - [ ] **Backend v1.1:** offizielle Run-Records (Godot meldet Run-/Evidence-Events,
       Backend führt den zentralen Run; `McpRunTrace` wird Puffer) · Screenshot-Evidenz
-      im Cockpit anzeigen · QA-Origin im Cockpit bedienbar machen · Session-Scopes
+      im Cockpit anzeigen (Artefakte liegen beim Ziel, Anzeige geplant) ·
+      QA-Origin im Cockpit bedienbar machen · Session-Scopes · Audio-Analyse-Schritt
+      auch am echten Ziel prüfen (Capability vorhanden, Game-Loop-Audio noch nicht)
 - [ ] Editor-Session-Tools komplett auf ACP-Präfixe konsolidieren
 - [ ] Bestandsaufnahme (`BESTANDSAUFNAHME.md`) als lebendes Dokument finalisieren
 - [ ] Portable Smoke in CI (GitHub Actions, Godot-Headless-Build als Matrix)

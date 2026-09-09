@@ -1,4 +1,4 @@
-# GODOT ACP — Backend (die Autorität)
+# GODOT ACP — Backend (die Autorität + Orchestrator)
 
 Das Backend ist **das Kontrollsystem**. Godot ACP — das Godot-Addon — ist nur
 noch der Adapter/Execution-Layer. Diese Rollenverteilung ist bewusst und
@@ -8,37 +8,68 @@ endgültig: Das Backend besitzt Wahrheit und Zustände, Godot besitzt Fähigkeit
 
 ```text
 godot-acp/
-├── backend/        DIESE Ebene: Autorität, läuft ohne Godot
-│   ├── server.mjs          Target-/Agent-Registry, Command-Bus, SSE, REST
+├── backend/        DIESE Ebene: Autorität + Orchestrator, läuft ohne Godot
+│   ├── server.mjs          Target-/Agent-Registry, Command-Bus, SSE, REST,
+│   │                       Orchestrator (Beobachtung, Anomalie-Analyse, Work-Orders)
+│   ├── contract.mjs        DER eingefrorene Vertrag (Zustände, Kanäle, Wörter)
 │   ├── persistence/        append-only JSONL (events/commands/sessions)
 │   └── data/               Laufzeitdaten (gitignored)
-├── fake_godot/     Contract-Test-Ziel: simuliert Godot vollständig
+├── fake_godot/     Contract-Test-Ziel: simuliert Godot vollständig (NUR Tests)
 ├── dashboard/      React+Vite Frontend (liest NUR die Backend-Wahrheit)
 ├── cli/            Ink-Terminal-Frontend (dasselbe: SSE + REST, keine Logik)
-└── runtime|editor|vision|ux|testing|autonomy|context/   das Godot-ACP (Adapter)
+└── runtime|editor|icons|client|mcp_chains/   das Godot-ACP (Adapter)
 ```
 
 ### Was hier zentral wohnt
 
 ```text
-Target Registry → Target State      (godot-01: OFFLINE/CONNECTING/CONNECTED/DEGRADED/RECONNECTING)
-Agent Registry  → Agent State       (IDLE/WORKING/PAUSE_REQUESTED/PAUSED/STOP_REQUESTED)
+Target Registry → Target State      (OFFLINE/CONNECTING/ONLINE/DEGRADED/DISCONNECTED)
+Agent Registry  → Agent State       (IDLE/WORKING/WAITING/PAUSE_REQUESTED/PAUSED/BLOCKED/FAILED/STOPPED)
 Command Bus     → Command State     (siehe Zustandsmaschine unten)
 Event Stream    → SSE /api/events   (React UND Ink abonnieren denselben Strom)
+Orchestrator    → Beobachtung/Analyse/Work-Orders (endet nicht)
 Persistence     → append-only JSONL (aktueller State IMMER daraus ableitbar)
 ```
 
-### Der Godot-Connector besitzt nichts
+### Adapter-Handshake: "verbunden" ist eine bewiesene Wahrheit
 
-Er meldet ausschließlich:
+Der Connector setzt ein Ziel erst dann auf ONLINE, wenn der MCP-Handshake
+(`initialize` → Antwort) über die TCP-Verbindung gelaufen ist. Ein offener
+Port allein ist kein "verbunden". Fällt Godot weg, bleibt das Backend voll
+bedienbar (bewiesen im Contract-Test, Schritt 8). Der echte Godot-Server
+kennt zudem die Backend-Control-Methoden `acp/pause_agent`,
+`acp/resume_agent`, `acp/stop_agent`, `acp/set_goal` und bestätigt sie per
+ACK-Notification; während einer Backend-Pause verweigert er jeden Tool-Call
+mit strukturierter `BLOCKED`-Antwort.
 
-```text
-godot.connected · godot.disconnected · godot.state_changed
-godot.event · godot.command_result
-```
+## Orchestrator: das Backend arbeitet selbstständig
 
-Das Backend entscheidet daraus den eigenen Zustand. Fällt Godot weg, bleibt
-das Backend voll bedienbar (bewiesen im Contract-Test, Schritt 8).
+Das Backend endet nicht. Eine Dauerschleife (adaptives Intervall: eng bei
+Anomalien/QA/Offline, sonst ruhig) macht drei Dinge — alle über dieselbe
+Command-Maschine, keine Parallelarchitektur:
+
+1. **Beobachten & packen:** Sobald der letzte Auftrag erledigt ist, packt der
+   Orchestrator eine **Work-Order** mit echter Baseline-Observation aus einem
+   echten Ziel-Scan. Ein Agent holt sie per `backend.get_work` /
+   `backend.claim_work` ab.
+2. **NUR bei Anomalie wird's teuer:** Jeder echte Fehler — FAILED, TIMEOUT
+   oder ein Tool-Ergebnis mit `isError`/ERROR-Text — erzeugt eine
+   **Anomalie-Entity** und triggert eine **atomare Analyse-Kette**
+   (Zustand sichern → Sicht sichern → Text/Audio/Logs). Die Analyse wählt
+   ihre Tools **generisch aus den echten Ziel-Capabilities** (tools/list des
+   Ziels), nicht aus einer Hardcode-Liste. Jeder Schritt ist ein einzelner
+   Call mit Observation; Misserfolge werden dokumentiert, nie erfunden.
+3. **Capabilities generisch binden:** Die Ziel-Tools werden per tools/list
+   gebunden (73 echte Tools beim realen Godot-Ziel) und dem Agent
+   transparent über `tools/list` + `backend.onboard` geliefert.
+
+### Onboarding ohne Code-Lektüre
+
+`backend.onboard` (via Proxy) bzw. `GET /api/onboard` liefert in einem
+Antwortobjekt ALLES für externe Agenten: den Vertrag (alle Zustandsmaschinen),
+die Human-Control-Regel (BLOCKED ist Nutzerwille, kein Fehler), die
+Worker-Loop-Vorschrift (`get_work → atomarer Call → observe → claim_work`)
+und die nächsten Schritte. Kein Studium des Godot-Addons nötig.
 
 ## Command-Bus: eine Zustandsmaschine für alle Origins
 
@@ -55,6 +86,7 @@ dem Dispatch drei echte Prüfungen (kein UI-Theater):
 
 1. **Agent-Zustand** — `PAUSED`/`STOP_REQUESTED` ⇒ `BLOCKED`
 2. **Blockliste** — Entities mit `scope/value/reason/active` ⇒ `BLOCKED` mit Grund
+   (eine Sperre pro scope+value; Duplikate reaktivieren statt stapeln)
 3. **Freigabepflicht** — geschützte Tools ⇒ `WAITING_APPROVAL` (60-s-Timeout),
    Entscheidung via `POST /api/approvals/:commandId`
 
@@ -74,6 +106,9 @@ Backend-Autorität hängt davon **nicht** ab.
 | `/api/blocks/:id/deactivate` | POST | Sperre aufheben |
 | `/api/approvals` | GET | Offene Freigaben |
 | `/api/approvals/:commandId` | POST | `{approved: true/false}` |
+| `/api/orchestrator` | GET | Orchestrator-Status: Anomalien, Work-Orders, Observations, Capabilities |
+| `/api/onboard` | GET | Onboarding-Objekt (Vertrag, Loops, Human-Control, nächste Schritte) |
+| `/api/contract` | GET | Eingefrorener Vertrag (Zustände, SSE-Kanäle, Menschen-Wörter) |
 | `/api/replay-proof` | GET | Beweis: State aus JSONL ablesbar |
 | `/api/events` | GET | **SSE** — denselben Strom lesen React und Ink |
 
@@ -102,36 +137,38 @@ npm test              # Contract-Test OHNE echte Godot-Instanz
 Ports (ENV): `ACP_BACKEND_PORT=8787` · `ACP_PROXY_PORT=9099` (Agent-Zugang) ·
 `ACP_GODOT_PORT=9090` (Ziel). Falls npmjs.org blockiert: `--registry=https://registry.npmmirror.com`.
 
-## Der Contract-Test (fake_godot/)
+## Die reale Godot-Strecke (Release-Beweis)
 
-Kein Wegwerf-Test: `fake_godot/simulator.mjs` ist der Vertragspartner, gegen
-den das Backend beweisen muss, dass es **ohne echte Godot-Instanz** direkt
-funktioniert. `fake_godot/contract_test.mjs` führt die volle Beweiskette:
+Der Contract-Test gegen den Simulator beweist die Backend-Logik; die **reale
+Strecke** wurde zusätzlich mit echtem Godot 4.7.2 geprüft (Testprojekt mit
+`addons/mcp` + `McpRuntime`-Autoload, Spiel sichtbar, Server auf :9090):
 
 ```text
-Backend → Target CONNECTED (nur Simulator)
-Agent → Proxy → Registry WORKING
-tools/call → CREATED→QUEUED→DISPATCHED→RUNNING→COMPLETED → Antwort beim Agent
-SSE → React/Ink-Strom sieht RUNNING/COMPLETED live
-Human → Pause → Backend PAUSED → Simulator-ACK → Agent-Call BLOCKED
-Blockliste → Entity mit Grund → gezielte BLOCKED, andere Tools laufen
-Approval → WAITING_APPROVAL → Freigabe COMPLETED / Verweigerung BLOCKED
-Disconnect → RECONNECTING (Backend bleibt bedienbar) → Reconnect CONNECTED
-Replay → State aus JSONL faltbar
+Echtes Godot ONLINE nach MCP-Handshake (kein Schein-Verbunden)
+Agent → Proxy → echtes runtime_ux_scan → echte Controls mit Pfaden/Rects
+Human → Pause → echtes acp/pause ACK → Agent-Call BLOCKED → Resume → läuft
+Blockliste nur für runtime_eval → geblockt; andere Tools laufen weiter
+Unbekanntes Tool → FAILED → Anomalie → automatische Analyse mit ECHTEN
+  Godot-Tools (runtime_eval, runtime_screenshot, runtime_vision_worker_ocr,
+  runtime_ux_logs) → ANALYZED mit Screenshot-/OCR-/Log-Beweisen
+Godot-Kill → DISCONNECTED/CONNECTING → Neustart → ONLINE (Reconnect)
+Backend-Neustart → State/Verlauf aus JSONL (118 Commands faltbar)
 ```
 
-Exit 0 = der Zyklus läuft. Damit ist die zentrale Frage beantwortet: Ja, das
-Backend ist unabhängig.
+Exit 0 des Contract-Tests = Backend-Logik unabhängig. Die obige reale Liste =
+der Godot-Adapter erfüllt denselben Vertrag.
 
 ## Ink-Cockpit (cli/)
 
 ```bash
-cd cli && npm install ink --registry=https://registry.npmmirror.com
+cd cli && npm install --registry=https://registry.npmmirror.com
 node dashboard.mjs
 ```
 
-`[p]` Pause/Weiter · `[s]` Stop · `[g]` Ziel · `[t]` Sperren-Ansicht · `[q]` Ende.
-Ohne `ink` läuft ein Poll-Modus mit denselben Tasten.
+`[p]` Pause/Weiter · `[s]` Stop · `[g]` Ziel · `[y]/[n]` Freigabe · `[q]` Ende.
+Ohne TTY/`ink` läuft ein Poll-Modus mit denselben Taten. Die CLI besitzt
+keine eigene Zustandslogik — sie spiegelt denselben SSE-Strom wie React und
+sendet über denselben REST-Bus.
 
 ## Grenzen (ehrlich)
 

@@ -63,6 +63,9 @@ var _last_tick_ms := 0
 var _last_error := ""
 var _evidence_cache: Dictionary = {}
 var _evidence_inflight := false
+# Backend-Systemzustand (acp/*): True während Pause/Stop vom Command-Bus.
+# Blockiert neue Tool-Ausführung, bis das Backend wieder freigibt.
+var _paused_by_backend := false
 
 
 func _init() -> void:
@@ -232,7 +235,10 @@ func get_role() -> String:
 
 
 func get_session_id() -> String:
-	return _session_idfunc get_context_store() -> RefCounted:
+	return _session_id
+
+
+func get_context_store() -> RefCounted:
 	return _context_store
 
 
@@ -652,6 +658,26 @@ func _handle_request(client_id: int, id: Variant, method: String, params: Dictio
 			_handle_resources_read(client_id, id, params)
 		"ping":
 			_send_response(client_id, id, {"lifecycle": get_lifecycle_state()}, "", 0)
+		"acp/pause_agent":
+			# Backend-Systemzustand (Command-Bus): Pause ist Backend-Autorität —
+			# der Adapter bestätigt die Ausführung (ACK) als Notification.
+			_paused_by_backend = true
+			_send_response(client_id, id, {"paused": true}, "", 0)
+			send_notification("notifications/message", {"event": "command_result", "detail": "pause ACK"})
+		"acp/resume_agent":
+			_paused_by_backend = false
+			_send_response(client_id, id, {"resumed": true}, "", 0)
+			send_notification("notifications/message", {"event": "command_result", "detail": "resume ACK"})
+		"acp/stop_agent":
+			_paused_by_backend = true
+			_send_response(client_id, id, {"stopped": true}, "", 0)
+			send_notification("notifications/message", {"event": "command_result", "detail": "stop ACK"})
+		"acp/set_goal":
+			var goal_result := {"ok": false}
+			if _agent_activity != null:
+				goal_result = _agent_activity.set_goal(str(params.get("goal", "")))
+			_send_response(client_id, id, goal_result, "", 0)
+			send_notification("notifications/message", {"event": "command_result", "detail": "goal ACK"})
 		_:
 			_send_response(client_id, id, null, "Method not found: " + method, -32601)
 
@@ -760,6 +786,14 @@ func _handle_tool_call(client_id: int, id: Variant, params: Dictionary) -> void:
 	var tool_name := str(params.get("name", ""))
 	var raw_args: Variant = params.get("arguments", {})
 	var args: Dictionary = raw_args if raw_args is Dictionary else {}
+	if _paused_by_backend:
+		# Backend-Pause ist eine echte Sperre: kein Werkzeug läuft, bis das
+		# Backend (Command-Bus) wieder freigibt. Strukturierte Ablehnung.
+		_send_tool_result_atomic(client_id, id, {
+			"content": [{"type": "text", "text": "BLOCKED: agent is paused by backend (human control)"}],
+			"isError": true,
+		})
+		return
 	if tool_name == "runtime_mcp_capabilities":
 		_send_tool_result_atomic(client_id, id, _handle_mcp_capabilities(args))
 		return
