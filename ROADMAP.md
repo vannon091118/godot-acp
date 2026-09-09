@@ -25,16 +25,22 @@ siehe `AGENTS.md`).
 - [x] **Entkopplung:** keine Spiel-Defaults, `McpAddonConfig` als zentrale Config-Schicht,
       saubere Degradierung (`SKIP`/`BLOCKED`/`not configured`)
 - [x] Commit-Governance (`agent.md`) + Commit-Gate (`testing/commit_gate.sh`)
-- [x] **Backend-Cockpit (v1.0-Halbgeburt fixiert):** zentrale Steuerungsebene unabhängig von
-      Godot (`backend/server.mjs`) — Agent-Proxy mit Pause/Blockliste/Freigaben/Zielen,
-      React-Dashboard (Live-Feed, Ziel-Eingabe, Tool-Sperrliste), SSE + JSONL-Persistenz,
-      Smoke-Test mit Godot-Simulator beweist alle vier Eingriffspfade
+- [x] **Backend-Autorität (v0.2, Rollenschnitt gefallen):** `backend/server.mjs` ist das
+      Kontrollsystem — Target-/Agent-Registry, Command-Bus als echte Zustandsmaschine
+      (CREATED→QUEUED→DISPATCHED→RUNNING→COMPLETED + Nebenzustände), Origins
+      human/agent/system/qa auf EINEM Bus, Blockliste als Entities mit Grund,
+      append-only JSONL mit Replay-Beweis (`/api/replay-proof`), Godot-Connector
+      entmachtet (meldet nur godot.*, Backend entscheidet). Struktur: `backend/`
+      (Autorität) · `fake_godot/` (Contract-Test-Ziel) · `dashboard/` (React) ·
+      `cli/` (Ink, zweites Frontend ohne eigene Logik). Contract-Test 19/19 PASS
+      beweist: Backend funktioniert vollständig ohne echte Godot-Instanz —
+      inkl. Disconnect→RECONNECTING→Reconnect bei vollem Bedienbestand
 
 ## 🔨 In Arbeit (v1.1)
 
-- [ ] **Backend v1.1:** Screenshot-Evidenz im Dashboard anzeigen (Bild-Pfad aus
-      `user://mcp_context` serialisieren), Mehr-Agent-Views, Ink-Cockpit mit `ink` als
-      optionalem Dependency-Hinweis statt Hand-Installation
+- [ ] **Backend v1.1:** offizielle Run-Records (Godot meldet Run-/Evidence-Events,
+      Backend führt den zentralen Run; `McpRunTrace` wird Puffer) · Screenshot-Evidenz
+      im Cockpit anzeigen · QA-Origin im Cockpit bedienbar machen · Session-Scopes
 - [ ] Editor-Session-Tools komplett auf ACP-Präfixe konsolidieren
 - [ ] Bestandsaufnahme (`BESTANDSAUFNAHME.md`) als lebendes Dokument finalisieren
 - [ ] Portable Smoke in CI (GitHub Actions, Godot-Headless-Build als Matrix)

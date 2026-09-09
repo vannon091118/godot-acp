@@ -189,37 +189,28 @@ Das aktiviert das Commit-Gate (`pre-commit`) und den KI-Signaturen-Filter
 ## Architektur in 20 Sekunden
 
 ```text
-KI-Agent (Claude, GPT, …)
-   │  JSON-RPC 2.0 über stdio/TCP
+Agent ────────┐
+              │
+Human ────────┼→ BACKEND (Autorität, backend/server.mjs)
+              │     ├─ Target-Registry · Agent-Registry
+React ────────┤     ├─ Command-Bus (eine Zustandsmaschine, Origins: human/agent/system/qa)
+Ink ──────────┘     ├─ Blockliste (Entities) · Freigaben · Ziele
+   │  SSE: /api/events (derselbe Strom für beide Frontends)
+   │                └─ append-only JSONL (State immer daraus ableitbar)
    ▼
-mcp_stdio_bridge.py ──► Backend-Proxy :9099 (optional, empfohlen)
-   │                        │  Pause · Blockliste · Freigaben · Ziel
-   │                        ▼  Dashboard http://localhost:8787 (React)
+Godot-Adapter (das Addon: runtime/ editor/ vision/ ux/ testing/ autonomy/)
+   │  meldet nur: godot.connected/disconnected/state_changed/event/command_result
    ▼
-TCP 127.0.0.1:9090
-   │
-   ▼
-McpRuntime-Autoload (im SPIEL-Prozess, PROCESS_MODE_ALWAYS)
-   │
-   ▼
-McpToolRegistry (Lazy-Load, Prefix-Routing, Sync/Async-Dispatch)
-   │
-   ├── runtime/*  Szenenbaum, Inputs, Freeze/Step
-   ├── vision/*   Screenshots als Artefakte, OCR-Worker
-   ├── ux/*       Scan/Find/Click/Watch
-   ├── debug/*    Perf, Memory, ClassDB
-   ├── systems/*  Audio, Animation, Network, Gamepad
-   ├── e2e/*      Szenarien, Goal-Player, Code-Analyzer
-   ├── autonomy/* Workspace, Chains, Journal, Rollback
-   └── gameplay/* generische game_*-Brücken (Duck-Typing)
+Godot (Spiel, MCP-Tools :9090)
 ```
 
-**Neu: Das Backend-Cockpit.** Unter `backend/` läuft eine zentrale Steuerungsebene,
-die **unabhängig von Godot** arbeitet: Der Agent verbindet sich mit dem Proxy,
-nicht mehr direkt mit dem Spiel — und du siehst im React-Dashboard live, was er
-tut, pausierst ihn, sperst einzelne Werkzeuge, gibst Ziele und entscheidest
-Freigaben. Ohne Agent-Chat. Ohne technisches Wissen. Einzelheiten:
-[backend/README.md](backend/README.md).
+**Die Rollenverteilung:** Das **Backend ist die Autorität** — Zustände, Befehle,
+Blockaden, Freigaben und Historie leben in `backend/` und laufen ohne Godot.
+Das Godot-ACP ist **Adapter/Execution-Layer**: Es enthält die wertvolle
+Godot-Fähigkeit (Runtime-/Input-Tools, Vision, UX, E2E, Autonomy-Workspace,
+Chains, Run-Trace), besitzt aber keine Systemzustände mehr. Der Contract-Test
+(`fake_godot/`) beweist, dass das Backend **vollständig ohne echte
+Godot-Instanz** funktioniert. Einzelheiten: [backend/README.md](backend/README.md).
 
 Vollständige Tool-Liste und Architektur: [MCP_INDEX.md](MCP_INDEX.md).
 
@@ -252,7 +243,7 @@ Vollständige Tool-Liste und Architektur: [MCP_INDEX.md](MCP_INDEX.md).
 | [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md) | 6-Schritte-Agent-Loop & Repair-Loop |
 | [PLAYTEST_HANDOFF.md](PLAYTEST_HANDOFF.md) | Spieler-Vertrag (player/qa/dev-Profile) |
 | [BESTANDSAUFNAHME.md](BESTANDSAUFNAHME.md) | Modul-/Tool-Bilanz & Lücken-Register |
-| [backend/README.md](backend/README.md) | Backend-Cockpit: REST-API, Proxy, Start |
+| [backend/README.md](backend/README.md) | Backend-Autorität: Registries, Command-Bus, Contract-Test |
 | [ROADMAP.md](ROADMAP.md) | Wo die Reise hingeht |
 
 ---

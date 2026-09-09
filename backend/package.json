@@ -1,15 +1,16 @@
 {
   "name": "godot-acp-backend",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "GODOT ACP Backend — zentrale Steuerungsebene für Agent-Playthroughs, unabhängig von Godot.",
+  "description": "GODOT ACP Backend — die zentrale Autorität: Target-/Agent-Registry, Command-Bus, Persistenz. Godot ACP ist nur noch Adapter.",
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node test/smoke_test.mjs",
-    "web:dev": "npm --prefix web run dev",
-    "web:build": "npm --prefix web run build",
-    "dashboard:cli": "node cli/dashboard.mjs"
+    "test": "node ../fake_godot/contract_test.mjs",
+    "simulator": "node ../fake_godot/simulator.mjs",
+    "web:dev": "npm --prefix ../dashboard run dev",
+    "web:build": "npm --prefix ../dashboard run build",
+    "dashboard:cli": "node ../cli/dashboard.mjs"
   },
   "engines": {
     "node": ">=18"

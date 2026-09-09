@@ -102,31 +102,38 @@ Code geprüft (Tool-Existenz, Routing, Degradierung). Ergebnisse: UC1/2/3/4/6/7/
 erfüllbar, UC5 mit korrigiertem OCR-Claim (F-05); Setup-Lücken als F-06 bis
 F-09 geschlossen.
 
-## 6. Backend-Ebene (backend/ — unabhängig von Godot, eigene Zentralisierung)
+## 6. Backend-Ebene (backend/ — DIE AUTORITÄT, unabhängig von Godot)
+
+> Rollenverteilung (September 2026): **Das Backend ist das Kontrollsystem.**
+> Das Godot-ACP ist Adapter/Execution-Layer. Die Godot-Seite (McpRunTrace,
+> McpAgentActivity) führt weiterhin lokale Notfall-/Puffer-Traces; die
+> **offizielle** Run-/Activity-Historie entsteht im Backend.
 
 | Baustein | Pfad | Zustand |
 |---|---|---|
-| Zentralserver | `backend/server.mjs` | ✅ Target-State (CONNECTED/DEGRADED via Ping), Command-Bus (`origin: human/system/agent`), REST + SSE, JSONL-Persistenz (`~/.godot-acp/`) |
-| Agent-Proxy | `:9099` in server.mjs | ✅ Jeder `tools/call` wird geprüft: PAUSED → `-32003`, Blockliste → `-32003`, Approval-Pflicht (60 s Timeout) → Wartet auf Dashboard-Freigabe, sonst Durchleitung + Response-Routing zurück zum Agent |
-| Web-Dashboard | `backend/web/` (React+Vite) | ✅ Deutsch, nontechnisch: Statuskarten, Pause/Stop/Neu-Verbinden, Ziel-Eingabe, Tool-Sperrliste (Chips), Freigabe-Box, Live-Feed, Stats |
-| Terminal-Cockpit | `backend/cli/dashboard.mjs` (Ink) | ✅ Gleiche Commands, Tastatur-Steuerung (`p`/`s`/`g`/`t`/`r`/`q`); `ink` optional installierbar |
-| Godot-Simulator | `backend/test/fake_godot.mjs` | ✅ MCP über TCP simuliert — Backend-Tests ohne Godot-Editor |
-| Smoke-Test | `backend/test/smoke_test.mjs` | ✅ Beweist Durchleitung, Pause-Ablehnung, Blockliste (gezielt + SELECT-Calls laufen weiter), Approval-Flow, Ziel-Setzung (7/7 PASS) |
-| Discovery | `/api/tools` (REST) | ✅ `tools/list`-Weiterleitung an Godot für die Blocklisten-Auswahl |
+| Zentralserver | `backend/server.mjs` | ✅ Target-/Agent-Registry, Command-Bus als vollwertige Zustandsmaschine (`CREATED→QUEUED→DISPATCHED→RUNNING→COMPLETED` + `WAITING_APPROVAL/REJECTED/BLOCKED/CANCELLED/TIMEOUT/FAILED`), Origins `human/agent/system/qa`, REST + SSE |
+| Adapter-Vertrag | Connector in server.mjs | ✅ besitzt NICHTS; meldet nur `godot.connected/disconnected/state_changed/event/command_result`, Backend entscheidet |
+| Persistenz | `backend/persistence/jsonl.mjs` → `backend/data/*.jsonl` | ✅ append-only zuerst (events/commands/sessions); State ist Fold über Log, bewiesen via `/api/replay-proof`; PAUSED-Agenten überleben Neustarts |
+| Agent-Proxy | `:9099` in server.mjs | ✅ MCP-Fassade: Agent kennt nur den Proxy; Tool-Calls laufen als Commands durch den Bus (Pause ⇒ BLOCKED, Blockliste ⇒ BLOCKED mit Grund, Approval ⇒ WAITING_APPROVAL) |
+| Web-Cockpit | `dashboard/` (React+Vite) | ✅ zeigt NUR die Backend-Wahrheit; freundliche deutsche Wörter statt MCP-Begriffe („Oberfläche ablesen" = `runtime_ux_scan`); Sperren mit Grund, Freigabe-Box, Live-Feed |
+| Terminal-Cockpit | `cli/dashboard.mjs` | ✅ zweites Frontend, kein zweites Gehirn: SSE + REST, null eigene Logik; `ink` optional (sonst Poll-Modus) |
+| Contract-Test-Ziel | `fake_godot/simulator.mjs` | ✅ simuliert Godot vollständig: tools/list/call, pause/resume/set_goal-ACKs, `godot.event`-Observations |
+| Contract-Test | `fake_godot/contract_test.mjs` | ✅ 19/19 PASS: volle Beweiskette inkl. Disconnect→RECONNECTING (Backend bleibt bedienbar)→Reconnect, SSE-Sicht beider Frontends, JSONL-Replay |
 
 **Architektur-Satz:** Der Agent verbindet sich NUR mit dem Proxy (`:9099`), nie
-mehr direkt mit dem Spiel. Einfluss ohne Agent-Chat = Systemzustand ändern
-(Pause/Blockliste/Ziel/Freigabe), der als Protokollantwort beim Agenten ankommt.
-Godot muss von alledem nichts wissen — das ist der Punkt.
+mehr direkt mit dem Spiel. Einfluss ohne Agent-Chat = Command mit `origin=human`
+auf denselben Bus, den auch der Agent benutzt. Der Contract-Test beantwortet
+die zentrale Frage — das Backend funktioniert vollständig ohne echte
+Godot-Instanz.
 
 ## 7. Persistenz-Bilanz (Kurzform, verbindlich: PERSISTENCE.md)
 
 `res://` (git): Addon-Code inkl. `.uid`-Sidecars, Chain-Manifeste, `.mcp.json`-Vorlage ·
-`user://` (persist): Traces, Workspaces, Playthrough-Archiv, Profile/Config ·
+`user://` (persist): Traces (Notfall-/Puffer-Rolle), Workspaces, Playthrough-Archiv, Profile/Config ·
 `user://` (ephemer): Context-Artefakte (TTL 45 s, 6 Records, 32 MB) ·
-Backend-Host (persist): `~/.godot-acp/{events,commands}.jsonl` — Command-Bus-Historie,
-unabhängig von Godot ·
-Cache: `node_modules/.cache/tesseract.js/` (regenerierbar), `backend/web/node_modules/` (Build).
+Backend-Host (persist, OFFIZIELL): `backend/data/{events,commands,sessions}.jsonl` —
+append-only Command-Bus-Historie, State daraus ableitbar ·
+Cache: `node_modules/.cache/tesseract.js/` (regenerierbar), `dashboard/node_modules/` (Build).
 
 ## 8. Prüf-Auftrag für die Zukunft
 

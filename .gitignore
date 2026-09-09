@@ -6,6 +6,9 @@ __pycache__/
 node_modules/
 package-lock.json
 
+# Backend-Laufzeitdaten (append-only JSONL — gehört auf den Host, nicht ins Repo)
+backend/data/
+
 # Godot user data (nie ins Repo — siehe PERSISTENCE.md)
 user/
 *.translation

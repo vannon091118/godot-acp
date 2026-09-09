@@ -1,94 +1,143 @@
-# GODOT ACP — Backend & Cockpit
+# GODOT ACP — Backend (die Autorität)
 
-Das Backend ist die **zentrale Steuerebene** für Agent-Playthroughs. Es läuft
-komplett ohne Godot — Godot ist hier nur ein Client, der sich per TCP meldet.
+Das Backend ist **das Kontrollsystem**. Godot ACP — das Godot-Addon — ist nur
+noch der Adapter/Execution-Layer. Diese Rollenverteilung ist bewusst und
+endgültig: Das Backend besitzt Wahrheit und Zustände, Godot besitzt Fähigkeit.
 
-## Warum es das gibt
+## Architekturvertrag
 
-Ohne Backend gilt: Der Agent redet direkt mit dem Spiel, und der Nutzer guckt
-zu — oder Vertrauenspersonen lesen später Protokolle. Mit Backend gilt: Jede
-Agent-Aktion läuft durch einen Proxy, den **du** kontrollierst. Pausieren,
-Werkzeuge sperren, Ziele geben, Freigaben entscheiden — alles im Dashboard,
-ohne ein Wort im Agent-Chat zu verlieren.
-
-## Architektur in einem Satz
-
+```text
+godot-acp/
+├── backend/        DIESE Ebene: Autorität, läuft ohne Godot
+│   ├── server.mjs          Target-/Agent-Registry, Command-Bus, SSE, REST
+│   ├── persistence/        append-only JSONL (events/commands/sessions)
+│   └── data/               Laufzeitdaten (gitignored)
+├── fake_godot/     Contract-Test-Ziel: simuliert Godot vollständig
+├── dashboard/      React+Vite Frontend (liest NUR die Backend-Wahrheit)
+├── cli/            Ink-Terminal-Frontend (dasselbe: SSE + REST, keine Logik)
+└── runtime|editor|vision|ux|testing|autonomy|context/   das Godot-ACP (Adapter)
 ```
-Godot-MCP (:9090)  ←—  Backend (:8787 Web/REST/SSE, :9099 Agent-Proxy)  ←—  Agent & Dashboard
+
+### Was hier zentral wohnt
+
+```text
+Target Registry → Target State      (godot-01: OFFLINE/CONNECTING/CONNECTED/DEGRADED/RECONNECTING)
+Agent Registry  → Agent State       (IDLE/WORKING/PAUSE_REQUESTED/PAUSED/STOP_REQUESTED)
+Command Bus     → Command State     (siehe Zustandsmaschine unten)
+Event Stream    → SSE /api/events   (React UND Ink abonnieren denselben Strom)
+Persistence     → append-only JSONL (aktueller State IMMER daraus ableitbar)
 ```
 
-- **Target-State lebt im Backend.** Läuft Godot? Weiß das Backend — auch wenn
-  Godot nichts mehr sagt (Ping-Timeout → `DEGRADED`).
-- **Der Agent verbindet sich NUR mit dem Proxy** (`:9099`) und glaubt, er
-  spreche mit Godot. Tatsächlich entscheidet das Backend je Call:
-  - `PAUSED` (Nutzer) → Ablehnung `-32003`
-  - Tool auf der Blockliste (Nutzer) → Ablehnung `-32003`
-  - Freigabepflichtig (z. B. `runtime_autonomy_export`, `runtime_eval`) →
-    wartet auf deinen Klick im Dashboard, 60 s Zeitlimit
-  - sonst → Durchleitung an Godot
-- **Command-Bus mit `origin`:** Jede Aktion ist ein Command
-  (`human` / `system` / `agent`) und landet in `~/.godot-acp/commands.jsonl`.
-- **Events** werden als JSONL persistiert (`~/.godot-acp/events.jsonl`) und
-  live per SSE (`/api/events`) an alle Dashboards gestreamt.
+### Der Godot-Connector besitzt nichts
+
+Er meldet ausschließlich:
+
+```text
+godot.connected · godot.disconnected · godot.state_changed
+godot.event · godot.command_result
+```
+
+Das Backend entscheidet daraus den eigenen Zustand. Fällt Godot weg, bleibt
+das Backend voll bedienbar (bewiesen im Contract-Test, Schritt 8).
+
+## Command-Bus: eine Zustandsmaschine für alle Origins
+
+```text
+CREATED → QUEUED → DISPATCHED → RUNNING → COMPLETED
+Nebenzustände: WAITING_APPROVAL · REJECTED · BLOCKED · CANCELLED · TIMEOUT · FAILED
+Origins: human | agent | system | qa
+```
+
+Der Nutzer drückt Pause → `origin=human, type=pause_agent`. Der Agent ruft ein
+Tool → `origin=agent, type=runtime_ux_scan`. **Derselbe Bus, dieselbe
+Maschine, dieselbe Protokollierung.** Tool-Calls von Agenten durchlaufen vor
+dem Dispatch drei echte Prüfungen (kein UI-Theater):
+
+1. **Agent-Zustand** — `PAUSED`/`STOP_REQUESTED` ⇒ `BLOCKED`
+2. **Blockliste** — Entities mit `scope/value/reason/active` ⇒ `BLOCKED` mit Grund
+3. **Freigabepflicht** — geschützte Tools ⇒ `WAITING_APPROVAL` (60-s-Timeout),
+   Entscheidung via `POST /api/approvals/:commandId`
+
+Pausen/Resume/Ziele werden dem Ziel zusätzlich als `acp/*`-Notification
+gemeldet; der Adapter bestätigt per ACK (`godot.command_result`). Die
+Backend-Autorität hängt davon **nicht** ab.
+
+## REST (Befehle) + SSE (Lagebild)
+
+| Route | Methode | Zweck |
+| --- | --- | --- |
+| `/api/status` | GET | Kompletter Snapshot (Targets, Agents, Blocks, Approvals, Stats) |
+| `/api/targets` · `/api/agents` | GET | Einzelne Registries |
+| `/api/commands` | POST | Command einschleusen: `{origin, type, payload}` |
+| `/api/agents/:id/pause·resume·stop·goal` | POST | Agent-Steuerung (origin=human) |
+| `/api/blocks` | GET/POST | Blockliste (Entities) |
+| `/api/blocks/:id/deactivate` | POST | Sperre aufheben |
+| `/api/approvals` | GET | Offene Freigaben |
+| `/api/approvals/:commandId` | POST | `{approved: true/false}` |
+| `/api/replay-proof` | GET | Beweis: State aus JSONL ablesbar |
+| `/api/events` | GET | **SSE** — denselben Strom lesen React und Ink |
+
+## Persistenz: append-only zuerst
+
+```text
+backend/data/events.jsonl     jeder beobachtete Vorfall
+backend/data/commands.jsonl   jede Command-Transition (CREATED → … → terminal)
+backend/data/sessions.jsonl   jeder Agent-Zustandsübergang
+```
+
+Keine `status.json`/`agent.json`, die gegeneinander kämpfen. Der aktuelle
+State ist ein Fold über das Log — `/api/replay-proof` führt den Beweis
+ausdrücklich. Nach einem Neustart werden PAUSED-Agenten aus `sessions.jsonl`
+wiederhergestellt.
 
 ## Start (3 Befehle)
 
 ```bash
 cd backend
-npm install --registry=https://registry.npmmirror.com   # falls npmjs.org blockiert ist
-npm run web:build      # Dashboard bauen (einmalig)
-npm start              # Backend + Dashboard auf http://localhost:8787
+npm run web:build     # Dashboard bauen (einmalig)
+npm start             # Backend + Cockpit auf http://localhost:8787
+npm test              # Contract-Test OHNE echte Godot-Instanz
 ```
 
-Danach: Dashboard im Browser öffnen, Spiel starten (Godot-MCP auf `:9090`),
-und wenn ein Agent arbeitet, dessen MCP-Verbindung auf `localhost:9099`
-(Proxy) zeigen lassen statt auf `:9090`. Fertig — du siehst alles live.
+Ports (ENV): `ACP_BACKEND_PORT=8787` · `ACP_PROXY_PORT=9099` (Agent-Zugang) ·
+`ACP_GODOT_PORT=9090` (Ziel). Falls npmjs.org blockiert: `--registry=https://registry.npmmirror.com`.
 
-**Test ohne Godot:** `npm test` startet einen Godot-Simulator
-(`test/fake_godot.mjs`) und beweist Durchleitung, Pause, Blockliste,
-Approval-Flow und Ziel-Setzung (Exit 0 = alle Beweise erbracht).
+## Der Contract-Test (fake_godot/)
 
-## REST-API (für eigene Clients, Ink-CLI, Skripte)
+Kein Wegwerf-Test: `fake_godot/simulator.mjs` ist der Vertragspartner, gegen
+den das Backend beweisen muss, dass es **ohne echte Godot-Instanz** direkt
+funktioniert. `fake_godot/contract_test.mjs` führt die volle Beweiskette:
 
-| Route | Methode | Zweck |
-| --- | --- | --- |
-| `/api/state` | GET | Kompletter Snapshot (Target, Session, Blockliste, Stats) |
-| `/api/events` | GET | SSE-Live-Stream (State + Events + Approvals) |
-| `/api/commands` | POST | Command einschleusen: `{ "type": "...", "payload": {...} }` |
-| `/api/tools` | GET | Tool-Liste von Godot (für die Blocklisten-Auswahl) |
-| `/api/approvals` | GET | Offene Freigaben |
-| `/api/approvals/:tool` | POST | Freigabe entscheiden: `{ "approved": true/false }` |
-| `/api/evidence` | GET | Letzte Intercept-/Command-Events |
+```text
+Backend → Target CONNECTED (nur Simulator)
+Agent → Proxy → Registry WORKING
+tools/call → CREATED→QUEUED→DISPATCHED→RUNNING→COMPLETED → Antwort beim Agent
+SSE → React/Ink-Strom sieht RUNNING/COMPLETED live
+Human → Pause → Backend PAUSED → Simulator-ACK → Agent-Call BLOCKED
+Blockliste → Entity mit Grund → gezielte BLOCKED, andere Tools laufen
+Approval → WAITING_APPROVAL → Freigabe COMPLETED / Verweigerung BLOCKED
+Disconnect → RECONNECTING (Backend bleibt bedienbar) → Reconnect CONNECTED
+Replay → State aus JSONL faltbar
+```
 
-### Commands (Auszug)
+Exit 0 = der Zyklus läuft. Damit ist die zentrale Frage beantwortet: Ja, das
+Backend ist unabhängig.
 
-| type | payload | Wirkung |
-| --- | --- | --- |
-| `session.pause` / `session.resume` | — | Agent anhalten / weiterlaufen lassen |
-| `session.stop` | — | Session beenden |
-| `session.goal` | `{ "goal": "..." }` | Ziel setzen (ändert *woran*, nicht *wie*) |
-| `session.controls` | `{ "enabled": false }` | Nutzer-Steuerung global verriegeln |
-| `tools.block` / `tools.unblock` | `{ "tools": ["runtime_eval"] }` | Werkzeuge sperren/freigeben |
-| `godot.reconnect` | — | Target-Verbindung neu aufbauen |
-
-## Terminal-Cockpit (Ink)
+## Ink-Cockpit (cli/)
 
 ```bash
-cd backend
-npm install ink --registry=https://registry.npmmirror.com
-node cli/dashboard.mjs
+cd cli && npm install ink --registry=https://registry.npmmirror.com
+node dashboard.mjs
 ```
 
-Tasten: `[p]` Pause/Weiter · `[s]` Stop · `[g]` Ziel tippen · `[t]` Werkzeuge
-sperren · `[r]` Neu verbinden · `[q]` Beenden.
+`[p]` Pause/Weiter · `[s]` Stop · `[g]` Ziel · `[t]` Sperren-Ansicht · `[q]` Ende.
+Ohne `ink` läuft ein Poll-Modus mit denselben Tasten.
 
 ## Grenzen (ehrlich)
 
-- Screenshots/Beweise bleiben beim Spiel (`user://mcp_context`); das Dashboard
-  zeigt aktuell deren *Metadaten* im Feed, nicht die Bilder. Bildanzeige ist
- Roadmap (v1.1).
-- Das Backend reguliert den Agenten über **Protokollantworten**, nicht über
-  Magie: Ein pausierter Agent sieht eine klare Fehlermeldung und kann
-  selbst entscheiden, wie er darauf reagiert. Wer im Chat „übertreibt",
-  dem hilft auch kein Proxy.
-- Die Godot-Seite muss nichts von alledem wissen — das ist der Punkt.
+- Screenshot-Bilder bleiben beim Ziel (`user://mcp_context`); das Cockpit zeigt
+  deren Metadaten. Bildanzeige: ROADMAP v1.1.
+- `McpRunTrace` und `McpAgentActivity` (Godot-Seite) führen weiterhin lokale
+  Notfall-/Puffer-Traces — die **offizielle** Run-/Activity-Historie entsteht
+  ab jetzt im Backend (events/commands JSONL). Die Godot-Seite meldet
+  `godot.event`s; der zentrale Record ist backend-seitig.
