@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "godot-runtime": {
-      "command": "<ABSOLUTE_PROJECT_PATH>/mcp_bridge.cmd",
-      "args": [],
+    "godot-acp": {
+      "command": "node",
+      "args": ["<ABSOLUTER_ACP_PFAD>/acp.mjs", "mcp"],
       "env": {
         "MCP_HOST": "127.0.0.1",
         "MCP_PORT": "9090"
