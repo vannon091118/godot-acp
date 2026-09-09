@@ -24,6 +24,7 @@
 import net from "node:net";
 import http from "node:http";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createLog, appendOnly, replay, readTail } from "./persistence/jsonl.mjs";
@@ -183,6 +184,31 @@ function seqSetState(seq, to, note = null) {
   seq.updatedAt = now();
   broadcast(sseFrame("sequence.progress", { sequence: publicSequence(seq) }));
   broadcastState();
+}
+
+/**
+ * Sequence-Concurrency-Vertrag: GENAU EINE aktive Sequenz pro Ziel.
+ * Weitere Sequenzen bleiben QUEUED (mit Grund) und laufen deterministisch,
+ * sobald das Ziel frei ist — keine konkurrierenden Maus-/Input-Reihen.
+ * Serialisierung liegt HIER (Backend-Autorität), nicht bei den Clients.
+ */
+const sequenceChains = new Map(); // targetId -> Promise der laufenden Kette
+function enqueueSequence(seq, targetId = TARGET_ID) {
+  const prev = sequenceChains.get(targetId) ?? Promise.resolve();
+  const active = prev && !prev.settled;
+  if (active) {
+    seq.note = "wartet auf freies Ziel (Serialisierung pro Ziel)";
+    appendOnly(logEvents, { ts: now(), kind: "sequence", message: `Sequenz ${seq.id} eingereiht — Ziel belegt`, sequenceId: seq.id });
+    broadcast(sseFrame("sequence.progress", { sequence: publicSequence(seq) }));
+  }
+  const run = prev.then(() => {
+    if (seq.state === "CANCELLED") return;
+    run.settled = false;
+    return executeSequence(seq);
+  }).catch(() => { /* executeSequence setzt FAILED selbst */ }).finally(() => { run.settled = true; });
+  run.settled = !active;
+  sequenceChains.set(targetId, run);
+  return run;
 }
 
 /** Asynchroner Läufer: ein Atom = ein Command auf dem Bus (Pause/Block greifen). */
@@ -1415,7 +1441,7 @@ function handleBackendTool(sock, msg, agent, tool) {
         return reply({ error: "sichtbares Spielfenster nicht erreichbar (Ziel nicht ONLINE) — Spiel mit --mcp starten", blocked: true });
       }
       const seq = createSequence({ name: args.name, steps, createdBy: agent.id, origin: "agent" });
-      executeSequence(seq).catch((e) => seqSetState(seq, "FAILED", e.message));
+      enqueueSequence(seq).catch((e) => seqSetState(seq, "FAILED", e.message));
       return reply({ sequenceId: seq.id, state: seq.state, total: seq.steps.length, note: "asynchron: Fortschritt via backend.get_sequence / SSE sequence.progress" });
     }
     case "backend.get_sequence": {
@@ -1455,10 +1481,25 @@ function buildOnboarding(agent) {
       "Bei BLOCKED: Grund lesen, Nutzer-Entscheidung respektieren, nicht retry-en",
     ],
     ports: { backend: BACKEND_PORT, proxy: PROXY_PORT, godot: GODOT_PORT },
+    installation: readInstallRecord(),
   };
 }
 
 const proxyReplies = new Map(); // probe-<wireId> -> { sock, agentMsgId, backendTools }
+
+/**
+ * Installationsrecord (Produktinstallation, NICHT Runtime-State):
+ * gelesen aus ~/.godot-acp/install.json — der einzige Owner des
+ * Installationszustands ist acp.mjs; das Backend liest ihn nur
+ * (lesender Beobachter, kein zweiter Schreiber).
+ */
+function readInstallRecord() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".godot-acp", "install.json"), "utf8"));
+    return { state: raw.state ?? null, acpVersion: raw.acpVersion, installedAt: raw.installedAt, boundProjects: raw.boundProjects ?? [] };
+  } catch { return null; }
+}
+
 function writeMsg(sock, obj) {
   try { sock.write(JSON.stringify(obj) + "\n"); } catch { /* ignore */ }
 }
@@ -1604,7 +1645,7 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 409, { error: "sichtbares Spielfenster nicht erreichbar (Ziel nicht ONLINE) — Spiel mit --mcp starten", blocked: true });
     }
     const seq = createSequence({ name: body.name, steps, createdBy: "human", origin: "human" });
-    executeSequence(seq).catch((e) => seqSetState(seq, "FAILED", e.message));
+    enqueueSequence(seq).catch((e) => seqSetState(seq, "FAILED", e.message));
     return sendJson(res, 202, publicSequence(seq));
   }
   const seqMatch = p.match(/^\/api\/sequences\/([^/]+)$/);

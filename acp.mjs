@@ -38,6 +38,23 @@ const BRIDGE_PORT = Number(process.env.ACP_PROXY_PORT || 9099);
 
 /* ── Installationszustand (EIN Datensatz, konservativ geschrieben) ────── */
 
+/**
+ * INSTALLATION_STATE (getrennt vom Backend-Laufzeitstatus):
+ * DISCOVERING → RESOLVING → INSTALLING → BINDING → VERIFYING → READY
+ * Terminal: FAILED | BLOCKED. Sonderzustände: UPDATING | REPAIRING.
+ * Persistiert in install.json (state + stateAt) — nie mit Target/Runtime-State
+ * verwechselt: Das Backend besitzt Laufzeitwahrheit, dieses Record nur
+ * Produkt-Installation.
+ */
+const INSTALL_STATES = ["DISCOVERING", "RESOLVING", "INSTALLING", "BINDING", "VERIFYING", "READY", "FAILED", "BLOCKED", "UPDATING", "REPAIRING"];
+function setInstallState(install, state, note = null) {
+  if (!INSTALL_STATES.includes(state)) throw new Error(`unbekannter Installationszustand: ${state}`);
+  install.state = state;
+  install.stateAt = Date.now();
+  if (note) install.stateNote = String(note).slice(0, 200); else delete install.stateNote;
+  writeInstall(install);
+}
+
 function readInstall() {
   try { return JSON.parse(fs.readFileSync(INSTALL_FILE, "utf8")); } catch { return null; }
 }
@@ -261,19 +278,26 @@ async function cmdInstall(projectArg) {
     } else {
       console.log(`[1/4] ${phase1}: bestehende Installation vom ${new Date(install.installedAt).toLocaleString("de-DE")} — wiederverwendet (idempotent)`);
     }
+    setInstallState(install, "RESOLVING");
 
     // PROJECT DETECT: eindeutiges Zielprojekt finden
     const startDir = projectArg ? path.resolve(projectArg) : process.cwd();
     const { candidates, unique } = findProjectRoot(startDir);
     if (!unique) {
+      const why = candidates.length === 0
+        ? "kein Godot-Projekt (project.godot) gefunden"
+        : `${candidates.length} Projektkandidaten — kein Ratespiel`;
+      if (install) setInstallState(install, "BLOCKED", why);
       console.error(candidates.length === 0
         ? "BLOCKED: kein Godot-Projekt (project.godot) gefunden — Projekt pfad angeben: acp.mjs install <pfad>"
         : `BLOCKED: ${candidates.length} Projektkandidaten — kein Ratespiel. Pfad angeben:\n  ${candidates.join("\n  ")}`);
       process.exit(3);
     }
     console.log(`[2/4] PROJECT DETECT: ${unique} (${candidates.length} Kandidat(en) gesamt)`);
+    setInstallState(install, "BINDING");
 
     if (isRecursiveInstall(unique)) {
+      setInstallState(install, "BLOCKED", "Rekursionsversuch — Installer läuft innerhalb des Zielprojekts");
       console.error("BLOCKED: Rekursionsversuch — der Installer läuft bereits INNERHALB des Zielprojekts (addons/mcp). Keine ACP-in-ACP-Verschachtelung.");
       process.exit(4);
     }
@@ -283,11 +307,14 @@ async function cmdInstall(projectArg) {
     console.log(`[3/4] BIND: addons/mcp ${bind.copied ? "kopiert" : "bereits vorhanden (unverändert)"} · .mcp.json geschrieben (kanonischer Einstieg: node …/acp.mjs mcp)`);
 
     // VERIFY: reale Checks, kein Erfundenes
+    setInstallState(install, "VERIFYING");
     const report = await verify(install, unique);
     console.log(`[4/4] VERIFY: backend=${report.backend ? "erreichbar" : "NICHT erreichbar (acp.mjs start)"} · godot-tcp=${report.godot ? "offen" : "zu (Spiel mit --mcp starten oder Dock START)"} · mcp=${report.mcp?.ok ? `Handshake ok, ${report.mcp.toolCount} Tools` : (report.mcp?.why ?? "kein MCP")}`);
     if (report.ready) {
+      setInstallState(install, "READY");
       console.log("READY — System betriebsbereit.");
     } else {
+      setInstallState(install, "BLOCKED", report.mcp?.why ?? "Backend/Runtime nicht erreichbar");
       console.log("NOT READY — Ursachen oben. Diagnose: node acp.mjs doctor");
       process.exitCode = 1;
     }
@@ -301,7 +328,7 @@ async function cmdStatus() {
   const project = findProjectRoot(process.cwd());
   const report = await verify(install, project.unique);
   console.log(JSON.stringify({
-    install: report.install ? { at: new Date(install.installedAt).toISOString(), version: install.acpVersion, boundProjects: install.boundProjects } : null,
+    install: report.install ? { at: new Date(install.installedAt).toISOString(), version: install.acpVersion, state: install.state ?? null, boundProjects: install.boundProjects } : null,
     project: report.project ? fs.realpathSync(project.unique) : null,
     backend: report.backend, godotTcp: report.godot,
     mcp: report.mcp, ready: report.ready,

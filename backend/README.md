@@ -77,6 +77,13 @@ niemals selbst einen Ansatz setzen. Ausführung ist **asynchron**: sofort eine
 Pause, Blockliste und Freigaben greifen unverändert. Ohne ONLINE-Ziel wird die
 Sequenz mit konkreter Ursache abgelehnt (kein Schein-Fortschritt).
 
+**Sequence-Concurrency (Serialisierung pro Ziel):** Es läuft **genau eine
+Sequenz pro Ziel gleichzeitig**. Weitere Sequenzen werden angenommen und
+verbleiben QUEUED (mit Hinweis "wartet auf freies Ziel"); sie starten
+deterministisch, sobald das Ziel frei ist — es gibt nie konkurrierende
+Maus-/Input-Reihen. Die Serialisierung liegt im Backend (Autorität), nicht
+bei den Clients.
+
 ### Onboarding ohne Code-Lektüre
 
 `backend.onboard` (via Proxy) bzw. `GET /api/onboard` liefert in einem
@@ -84,6 +91,14 @@ Antwortobjekt ALLES für externe Agenten: den Vertrag (alle Zustandsmaschinen),
 die Human-Control-Regel (BLOCKED ist Nutzerwille, kein Fehler), die
 Worker-Loop-Vorschrift (`get_work → atomarer Call → observe → claim_work`)
 und die nächsten Schritte. Kein Studium des Godot-Addons nötig.
+
+Darin enthalten: das **Installationsrecord** (`installation.state` aus
+`~/.godot-acp/install.json` — Besitzer dieses Zustands ist ausschließlich
+das CLI `acp.mjs`; das Backend liest ihn nur). Der Installationszustand
+(DISCOVERING → RESOLVING → INSTALLING → BINDING → VERIFYING → READY,
+Terminal: FAILED/BLOCKED) ist bewusst **getrennt** vom Backend-Laufzeitstatus:
+Installation ≠ Target-State ≠ Runtime-State. Doppel-Onboarding ist idempotent
+(ein Record, kein Wachstum, Lock-Datei gegen parallele Installationen).
 
 ## Command-Bus: eine Zustandsmaschine für alle Origins
 

@@ -344,6 +344,47 @@ async function main() {
     const approach = seqDone.steps[0];
     check("   Ansatz-Fahrt ist smooth (interpoliert, nicht teleport)", approach.kind === "approach" && approach.tool === "runtime_mouse_move", JSON.stringify(approach).slice(0, 140));
 
+    // ── 17) Sequence-Concurrency: zwei Sequenzen aufs selbe Ziel — KEIN Parallelismus.
+    // Beweis: die zweite wird eingereiht (QUEUED mit Hinweis) und läuft erst,
+    // wenn die erste COMPLETED ist. Keine konkurrierenden Maus-/Input-Reihen.
+    agent.send({ jsonrpc: "2.0", id: 60, method: "tools/call", params: {
+      name: "backend.run_sequence",
+      arguments: { name: "Kette-A", steps: [{ tool: "runtime_ux_scan", arguments: {} }] },
+    } });
+    await waitFor(() => replies[60] !== undefined, 6000, "run_sequence A");
+    const seqA = parse(replies[60]);
+    agent.send({ jsonrpc: "2.0", id: 61, method: "tools/call", params: {
+      name: "backend.run_sequence",
+      arguments: { name: "Kette-B", steps: [{ tool: "runtime_ux_scan", arguments: {} }] },
+    } });
+    await waitFor(() => replies[61] !== undefined, 6000, "run_sequence B");
+    const seqB = parse(replies[61]);
+    // Sofort nach Annahme: höchstens EINE RUNNING, die andere QUEUED.
+    let aNow = null, bNow = null;
+    agent.send({ jsonrpc: "2.0", id: 62, method: "tools/call", params: { name: "backend.get_sequence", arguments: { sequenceId: seqA.sequenceId } } });
+    await sleep(250);
+    aNow = parse(replies[62])?.sequence;
+    agent.send({ jsonrpc: "2.0", id: 63, method: "tools/call", params: { name: "backend.get_sequence", arguments: { sequenceId: seqB.sequenceId } } });
+    await sleep(250);
+    bNow = parse(replies[63])?.sequence;
+    const states = [aNow?.state, bNow?.state].sort();
+    check("17. Sequence-Concurrency: nie zwei RUNNING aufs selbe Ziel", !states.includes("RUNNING") || states[0] === "QUEUED" || states[0] === "COMPLETED", `A=${aNow?.state} B=${bNow?.state}`);
+    // Beide landen deterministisch in COMPLETED (A vor B oder B vor A — egal, Hauptsache serialisiert).
+    let aFinal = null, bFinal = null;
+    await waitFor(async () => {
+      agent.send({ jsonrpc: "2.0", id: 64, method: "tools/call", params: { name: "backend.get_sequence", arguments: { sequenceId: seqA.sequenceId } } });
+      await sleep(200);
+      aFinal = parse(replies[64])?.sequence;
+      return ["COMPLETED", "FAILED"].includes(aFinal?.state);
+    }, 30000, "Sequenz A Endzustand");
+    await waitFor(async () => {
+      agent.send({ jsonrpc: "2.0", id: 65, method: "tools/call", params: { name: "backend.get_sequence", arguments: { sequenceId: seqB.sequenceId } } });
+      await sleep(200);
+      bFinal = parse(replies[65])?.sequence;
+      return ["COMPLETED", "FAILED"].includes(bFinal?.state);
+    }, 30000, "Sequenz B Endzustand");
+    check("   Eingereihte Sequenz läuft nach (kein Verlust)", aFinal?.state === "COMPLETED" && bFinal?.state === "COMPLETED", `A=${aFinal?.state} B=${bFinal?.state}`);
+
     console.log(failures === 0 ? "\nCONTRACT ERFÜLLT: Das Backend funktioniert vollständig ohne echte Godot-Instanz." : `\n${failures} Beweis(e) fehlgeschlagen.`);
     agent.close();
     sim2.kill();
