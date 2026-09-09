@@ -227,6 +227,7 @@ Vollständige Tool-Liste und Architektur: [MCP_INDEX.md](MCP_INDEX.md).
 | [AGENTS.md](AGENTS.md) | Test-Doktrin für MCP-Tests |
 | [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md) | 6-Schritte-Agent-Loop & Repair-Loop |
 | [PLAYTEST_HANDOFF.md](PLAYTEST_HANDOFF.md) | Spieler-Vertrag (player/qa/dev-Profile) |
+| [BESTANDSAUFNAHME.md](BESTANDSAUFNAHME.md) | Modul-/Tool-Bilanz & Lücken-Register |
 | [ROADMAP.md](ROADMAP.md) | Wo die Reise hingeht |
 
 ---

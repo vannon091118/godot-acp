@@ -204,7 +204,8 @@ mcp/e2e_world_scene="game_view"                    ; leer ⇒ Welt-Verifikation 
 ## Tool-Liste (Stand: 143 Domain-Tools + 6 Host-Tools + custom_*; Editor-Session zusätzlich +17 editor_*-Tools)
 
 > **Zählung autoritativ:** `McpToolRegistry`-Reflection — die Registry lädt
-> alle Domänen und liefert die echten Namen. 143 Domain + 6 Host (runtime_mcp_status,
+> alle Domänen und liefert die echten Namen. Domain-Tools (aktuelle Bilanz mit
+> Zähl-Methode: **BESTANDSAUFNAHME.md §4**) + 6 Host-Tools (runtime_mcp_status,
 > runtime_mcp_events, runtime_agent_goal_set, runtime_agent_activity,
 > runtime_visual_evidence, runtime_run_trace).
 

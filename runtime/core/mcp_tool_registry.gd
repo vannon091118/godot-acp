@@ -334,7 +334,9 @@ static func _is_autonomy_tool(name: String) -> bool:
 
 
 static func _is_chain_controller_tool(name: String) -> bool:
-	return name in ["runtime_chain_run", "runtime_chain_trace", "runtime_chain_validate"]
+	# F-01 (Bestandsaufnahme): list/load wurden definiert, aber nie geroutet —
+	# der Registry-Dispatch antwortete "Unknown tool". Jetzt vollständig.
+	return name in ["runtime_chain_run", "runtime_chain_trace", "runtime_chain_validate", "runtime_chain_list", "runtime_chain_load"]
 
 
 static func _is_goal_player_tool(name: String) -> bool:

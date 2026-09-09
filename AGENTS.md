@@ -25,6 +25,7 @@
 | 6 | **`MCP_ANOMALIES.md`** | GAME vs MCP-Mismatch-Referenz — trennt Spiel-Bugs von Tool-API-Problemen |
 | 7 | **`client/playthroughs/MCP_PLAYTEST_REPORT.md`** | Live-Playthrough-Archiv (was sichtbar verifiziert wurde) |
 | 8 | **`PERSISTENCE.md`** | Persistenz-Landkarte: was wohin persistiert, TTLs, Retention, Versionierung, Backup |
+| 9 | **`BESTANDSAUFNAHME.md`** | Modul-/Tool-Bilanz, Lücken-Register (F-/G-IDs), Zähl-Methode |
 
 **Projekt-Doku (nicht hier):** `DESIGN.md`, `VISION.md`, `docs/FINDINGS.md`,
 `docs/mcp_live_test_results.md` — Spiel-Findings und Session-Hergang. Die
