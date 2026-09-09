@@ -55,6 +55,13 @@ for f in $FILES; do
     # L4-Archiv (agent.md §4): Session-Kontext ist dort erlaubt.
     *MCP_ANOMALIES.md|*BESTANDSAUFNAHME.md|*PLAYTEST_REPORT.md|*UX_REPORT.md|*CONTEXT_AUTONOMY_AUDIT.md)
       continue ;;
+    # Der Vertrag selbst dokumentiert die Migration ALT (hartkodiert) → NEU
+    # (ENTKOPPLUNG.md §7): Die Alt-Pfade sind dort Beispiele, kein Code.
+    *ENTKOPPLUNG.md)
+      continue ;;
+    # Dieses Gate hier: Das Muster selbst ist Struktur, keine Kopplung.
+    *commit_gate.sh)
+      continue ;;
     mcp/client/playthroughs/*)
       continue ;;
   esac

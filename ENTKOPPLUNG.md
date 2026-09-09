@@ -42,6 +42,10 @@ addons/mcp/
 ├── PLAYTEST_HANDOFF.md             Spieler-Vertrag + Atom-Registry
 ├── MCP_ANOMALIES.md                GAME vs MCP-Mismatch-Referenz
 ├── mcp_chains/                     Versionierte Chain-Manifeste (Addon-Eigentum)
+├── backend/                        Zentrale Steuerungsebene OHNE Godot-Abhängigkeit:
+│                                   Node-Server + React-Dashboard. Godot ist hier nur
+│                                   Client. EIGENE Hierarchie, EIGENE Doku (backend/README.md),
+│                                   EIGENE Zentralisierung (Target-State + Command-Bus).
 ├── client/                         Externe Transport-/Analyse-Clients
 ├── editor/                         Plugin + QA-Live-Dock
 ├── runtime/                        MCP-Server-Kern (kein Spielcode)
@@ -117,6 +121,10 @@ existiert, ohne zu raten.
   über einen cwd-immunen Wrapper mit **absolutem** Pfad in der Client-Config.
 - `.mcp.json` ist eine **Vorlage**: Host-Projekte tragen ihren eigenen
   absoluten Wrapper-Pfad ein (`<ABSOLUTE_PROJECT_PATH>/mcp_bridge.cmd`).
+- **Backend-Proxy (optional, empfohlen):** Agent-Clients können statt `:9090`
+  den Proxy `:9099` des Godot-unabhängigen Backends nutzen — gleiche Ports-
+  Logik, konfigurierbar (`ACP_BACKEND_PORT`/`ACP_PROXY_PORT`/`ACP_GODOT_PORT`).
+  Das Backend hält den Target-State, das Spiel bleibt austauschbar.
 
 ---
 
@@ -132,6 +140,9 @@ existiert, ohne zu raten.
 - Session-Berichte (Playtest-Reports, UX-Audits) im Addon-Doku-Kern — sie
   gehören in `client/playthroughs/` und tragen den Session-Kontext als
   Archiv-Stempel, nicht als Addon-Doktrin.
+- Spielvokabular im Backend (`backend/`) — auch die Steuerungsebene kennt
+  kein konkretes Spiel; sie reguliert über MCP-Toolnamen und Session-States,
+  nicht über Spielszenen.
 
 ---
 

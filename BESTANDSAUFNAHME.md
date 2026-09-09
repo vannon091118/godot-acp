@@ -102,14 +102,33 @@ Code geprüft (Tool-Existenz, Routing, Degradierung). Ergebnisse: UC1/2/3/4/6/7/
 erfüllbar, UC5 mit korrigiertem OCR-Claim (F-05); Setup-Lücken als F-06 bis
 F-09 geschlossen.
 
-## 6. Persistenz-Bilanz (Kurzform, verbindlich: PERSISTENCE.md)
+## 6. Backend-Ebene (backend/ — unabhängig von Godot, eigene Zentralisierung)
+
+| Baustein | Pfad | Zustand |
+|---|---|---|
+| Zentralserver | `backend/server.mjs` | ✅ Target-State (CONNECTED/DEGRADED via Ping), Command-Bus (`origin: human/system/agent`), REST + SSE, JSONL-Persistenz (`~/.godot-acp/`) |
+| Agent-Proxy | `:9099` in server.mjs | ✅ Jeder `tools/call` wird geprüft: PAUSED → `-32003`, Blockliste → `-32003`, Approval-Pflicht (60 s Timeout) → Wartet auf Dashboard-Freigabe, sonst Durchleitung + Response-Routing zurück zum Agent |
+| Web-Dashboard | `backend/web/` (React+Vite) | ✅ Deutsch, nontechnisch: Statuskarten, Pause/Stop/Neu-Verbinden, Ziel-Eingabe, Tool-Sperrliste (Chips), Freigabe-Box, Live-Feed, Stats |
+| Terminal-Cockpit | `backend/cli/dashboard.mjs` (Ink) | ✅ Gleiche Commands, Tastatur-Steuerung (`p`/`s`/`g`/`t`/`r`/`q`); `ink` optional installierbar |
+| Godot-Simulator | `backend/test/fake_godot.mjs` | ✅ MCP über TCP simuliert — Backend-Tests ohne Godot-Editor |
+| Smoke-Test | `backend/test/smoke_test.mjs` | ✅ Beweist Durchleitung, Pause-Ablehnung, Blockliste (gezielt + SELECT-Calls laufen weiter), Approval-Flow, Ziel-Setzung (7/7 PASS) |
+| Discovery | `/api/tools` (REST) | ✅ `tools/list`-Weiterleitung an Godot für die Blocklisten-Auswahl |
+
+**Architektur-Satz:** Der Agent verbindet sich NUR mit dem Proxy (`:9099`), nie
+mehr direkt mit dem Spiel. Einfluss ohne Agent-Chat = Systemzustand ändern
+(Pause/Blockliste/Ziel/Freigabe), der als Protokollantwort beim Agenten ankommt.
+Godot muss von alledem nichts wissen — das ist der Punkt.
+
+## 7. Persistenz-Bilanz (Kurzform, verbindlich: PERSISTENCE.md)
 
 `res://` (git): Addon-Code inkl. `.uid`-Sidecars, Chain-Manifeste, `.mcp.json`-Vorlage ·
 `user://` (persist): Traces, Workspaces, Playthrough-Archiv, Profile/Config ·
 `user://` (ephemer): Context-Artefakte (TTL 45 s, 6 Records, 32 MB) ·
-Cache: `node_modules/.cache/tesseract.js/` (regenerierbar).
+Backend-Host (persist): `~/.godot-acp/{events,commands}.jsonl` — Command-Bus-Historie,
+unabhängig von Godot ·
+Cache: `node_modules/.cache/tesseract.js/` (regenerierbar), `backend/web/node_modules/` (Build).
 
-## 7. Prüf-Auftrag für die Zukunft
+## 8. Prüf-Auftrag für die Zukunft
 
 1. Nach jeder Tool-Änderung: Zählung in §4 aktualisieren (`agent.md` §3 Absatz 5).
 2. Nach jedem neuen Modul: Zeile in §2 ergänzen, sonst ist das Modul offiziell

@@ -192,7 +192,11 @@ Das aktiviert das Commit-Gate (`pre-commit`) und den KI-Signaturen-Filter
 KI-Agent (Claude, GPT, …)
    │  JSON-RPC 2.0 über stdio/TCP
    ▼
-mcp_stdio_bridge.py  ──►  TCP 127.0.0.1:9090
+mcp_stdio_bridge.py ──► Backend-Proxy :9099 (optional, empfohlen)
+   │                        │  Pause · Blockliste · Freigaben · Ziel
+   │                        ▼  Dashboard http://localhost:8787 (React)
+   ▼
+TCP 127.0.0.1:9090
    │
    ▼
 McpRuntime-Autoload (im SPIEL-Prozess, PROCESS_MODE_ALWAYS)
@@ -209,6 +213,13 @@ McpToolRegistry (Lazy-Load, Prefix-Routing, Sync/Async-Dispatch)
    ├── autonomy/* Workspace, Chains, Journal, Rollback
    └── gameplay/* generische game_*-Brücken (Duck-Typing)
 ```
+
+**Neu: Das Backend-Cockpit.** Unter `backend/` läuft eine zentrale Steuerungsebene,
+die **unabhängig von Godot** arbeitet: Der Agent verbindet sich mit dem Proxy,
+nicht mehr direkt mit dem Spiel — und du siehst im React-Dashboard live, was er
+tut, pausierst ihn, sperst einzelne Werkzeuge, gibst Ziele und entscheidest
+Freigaben. Ohne Agent-Chat. Ohne technisches Wissen. Einzelheiten:
+[backend/README.md](backend/README.md).
 
 Vollständige Tool-Liste und Architektur: [MCP_INDEX.md](MCP_INDEX.md).
 
@@ -241,6 +252,7 @@ Vollständige Tool-Liste und Architektur: [MCP_INDEX.md](MCP_INDEX.md).
 | [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md) | 6-Schritte-Agent-Loop & Repair-Loop |
 | [PLAYTEST_HANDOFF.md](PLAYTEST_HANDOFF.md) | Spieler-Vertrag (player/qa/dev-Profile) |
 | [BESTANDSAUFNAHME.md](BESTANDSAUFNAHME.md) | Modul-/Tool-Bilanz & Lücken-Register |
+| [backend/README.md](backend/README.md) | Backend-Cockpit: REST-API, Proxy, Start |
 | [ROADMAP.md](ROADMAP.md) | Wo die Reise hingeht |
 
 ---

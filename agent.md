@@ -125,7 +125,7 @@ Ein Clone ohne aktivierte Hooks ist ein Verstoß gegen diese Datei.
 | Ebene | Dateien | Autor | Hinweis |
 |---|---|---|---|
 | L1 Vertrag | `agent.md`, `ENTKOPPLUNG.md` | Mensch + Agent (nur via Auftrag) | Governance, Ton, Entkopplung |
-| L2 Architektur | `MCP_INDEX.md`, `PERSISTENCE.md` | Agent (nachführen) | Tool-/Persistenz-Realität |
+| L2 Architektur | `MCP_INDEX.md`, `PERSISTENCE.md`, `backend/README.md` | Agent (nachführen) | Tool-/Persistenz-/Backend-Realität |
 | L3 Workflow | `AGENT_WORKFLOW.md`, `AGENTS.md`, `PLAYTEST_HANDOFF.md` | Agent | Abläufe, Test-Doktrin |
 | L4 Archiv | `MCP_ANOMALIES.md`, `BESTANDSAUFNAHME.md`, Playtest-Reports | Agent | Session-Kontext erlaubt |
 
