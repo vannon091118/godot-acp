@@ -93,18 +93,43 @@ sammeln Erfahrung. Deine Toasts bleiben unberührt.
 
 ## Installation
 
-### Schritt 1: Add-on ins Projekt
+### 🤖 Für Agenten: der eine Befehl (kanonischer Weg)
 
-Den `mcp/`-Ordner dieses Repos als `addons/mcp/` in dein Godot-4.x-Projekt legen
-(Kopie, Submodule oder Release-Zip — der Pfad `addons/mcp` ist der einzig
-erwartete Well-known-Pfad):
+Ein Agent bekommt **nur diesen Link** und richtet ACP damit für ein
+beliebiges Godot-4.x-Projekt selbst ein — keine manuellen Pfade, keine
+`.mcp.json`-Bastelarbeit, keine Portkonfiguration:
 
 ```bash
-git clone <dieses-repo> /tmp/godot-acp
-cp -r /tmp/godot-acp/mcp <dein-projekt>/addons/mcp
+# 1) Repo klonen (equal, wohin — der Installer ist cwd-immun):
+git clone https://github.com/vannon091118/godot-acp /tmp/godot-acp
+
+# 2) Onboarding: Installation + Projektbindung + Verifikation in einem Lauf
+#    (<projekt> = Pfad zum Godot-Projekt mit project.godot):
+node /tmp/godot-acp/acp.mjs install <projekt>
+
+# 3) Backend starten (kanonischer Launcher):
+node /tmp/godot-acp/acp.mjs start
+
+# 4) Spiel sichtbar starten (Pflicht — Headless ist verboten):
+#    Im Godot-Editor: ACP-Dock → START. Oder:
+$GODOT_BIN --path <projekt> -- --mcp --mcp-port 9090
+
+# 5) READY nur nach echtem MCP-Handshake:
+node /tmp/godot-acp/acp.mjs status
 ```
 
-### Schritt 2: Plugin aktivieren
+`install` macht alles Nötige automatisch: findet das Projekt (bei mehreren
+Kandidaten: BLOCKED statt raten), kopiert die Runtime nach `addons/mcp`,
+schreibt die `.mcp.json` mit dem kanonischen Einstieg (`node …/acp.mjs mcp` —
+absolut aufgelöst, cwd-immun) und verifiziert per echtem Handshake. Wiederholtes
+Ausführen ist **idempotent** (REUSE → VERIFY → READY, kein wachsender Zustand);
+Projekte ohne `run/main_scene` werden mit konkreter Ursache abgelehnt.
+
+Als Agent arbeitest du nach READY mit dem Backend (Port 8787): `backend.onboard`
+liefert Vertrag und Loops, `backend.run_sequence` nimmt Tasks als atomare
+Ausführungsreihen mit automatischem smooth Maus-Ansatz entgegen.
+
+### Plugin aktivieren (einmal im Editor)
 
 **Project Settings → Plugins → GODOT ACP → Enable.**
 
@@ -144,10 +169,15 @@ Oder komfortabel über den **QA-Live-Dock** im Editor: Play-Goal wählen
 Spiel als separaten Prozess, der Runtime-Server bootet im echten Spiel-SceneTree,
 und der Dock verbindet sich von selbst. Eine Taste, null Konfiguration.
 
-### Schritt 5: Externen Client anbinden
+### Schritt 5: Externen Client anbinden — entfällt für `acp.mjs`-Nutzer
 
-`.mcp.json` ins Projekt-Root (Vorlage liegt bei) und den **absoluten** Pfad zum
-cwd-immunen Wrapper eintragen:
+Der `install`-Befehl des kanonischen Onboardings schreibt die `.mcp.json`
+**automatisch** (kanonischer Einstieg `node …/acp.mjs mcp`, absolut
+aufgelöst, cwd-immun). Der folgende manuelle Weg gilt nur noch für
+Legacy-Setups ohne Installer:
+
+<details>
+<summary>Legacy: manuelle .mcp.json (nicht mehr offiziell)</summary>
 
 ```json
 {
@@ -165,10 +195,15 @@ cwd-immunen Wrapper eintragen:
 > der Server startet nie. Wir nennen das "bekanntes Verhalten", nicht "Bug".
 > (Wrapper leitet den Bridge-Pfad über `%~dp0` ab — cwd des Clients egal.)
 
+</details>
+
 ### Schritt 6: Verifizieren
 
 ```bash
-# Status abfragen:
+# Kanonisch (Installation + Projekt + Backend + MCP-Handshake in einem Report):
+node /tmp/godot-acp/acp.mjs status
+
+# Alternativ direkt am Ziel:
 node addons/mcp/client/playthroughs/atomic/mcp_player_atom.js runtime_mcp_status '{}'
 
 # Persistente Session für viele atomare Aktionen:
